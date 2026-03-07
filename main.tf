@@ -54,14 +54,15 @@ locals {
 # MÓDULOS
 ###############################################################
 
-module "iam" {
-  source      = "./modules/iam"
-  name_prefix = local.name_prefix
-  account_id  = local.account_id
-  region      = local.region
-  project_name = var.project_name
-  environment  = var.environment
-}
+# Módulo IAM comentado - usando roles pré-existentes do lab
+# module "iam" {
+#   source      = "./modules/iam"
+#   name_prefix = local.name_prefix
+#   account_id  = local.account_id
+#   region      = local.region
+#   project_name = var.project_name
+#   environment  = var.environment
+# }
 
 module "s3" {
   source      = "./modules/s3"
@@ -74,7 +75,7 @@ module "glue" {
   source             = "./modules/glue"
   name_prefix        = local.name_prefix
   environment        = var.environment
-  glue_role_arn      = module.iam.glue_role_arn
+  glue_role_arn      = var.glue_role_arn
   s3_bucket_sor      = module.s3.bucket_sor_name
   s3_bucket_sot      = module.s3.bucket_sot_name
   s3_bucket_spec     = module.s3.bucket_spec_name
@@ -85,7 +86,7 @@ module "kinesis" {
   source      = "./modules/kinesis"
   name_prefix = local.name_prefix
   environment = var.environment
-  kinesis_role_arn   = module.iam.kinesis_role_arn
+  kinesis_role_arn   = var.kinesis_role_arn
   s3_bucket_sor_arn  = module.s3.bucket_sor_arn
   s3_bucket_sor_name = module.s3.bucket_sor_name
 }
@@ -102,7 +103,7 @@ module "sagemaker" {
   source            = "./modules/sagemaker"
   name_prefix       = local.name_prefix
   environment       = var.environment
-  sagemaker_role_arn = module.iam.sagemaker_role_arn
+  sagemaker_role_arn = var.sagemaker_role_arn
   s3_bucket_spec    = module.s3.bucket_spec_name
 }
 
@@ -110,7 +111,7 @@ module "dms" {
   source       = "./modules/dms"
   name_prefix  = local.name_prefix
   environment  = var.environment
-  dms_role_arn = module.iam.dms_role_arn
+  dms_role_arn = var.dms_role_arn
   s3_bucket_sor_arn  = module.s3.bucket_sor_arn
   s3_bucket_sor_name = module.s3.bucket_sor_name
 }
