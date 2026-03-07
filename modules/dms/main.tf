@@ -53,7 +53,7 @@ resource "aws_dms_s3_endpoint" "source" {
 
   csv_delimiter  = ";"
   csv_row_delimiter = "\n"
-  ignore_headers_row = 1
+  ignore_header_rows = true
 
   tags = {
     Name = "DMS Source - B3 CSV Files"
