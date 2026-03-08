@@ -58,14 +58,16 @@ terraform-b3-datalake/
 
 ---
 
-## 🚀 Como Usar
+## 🚀 Como Usar no cloud shell
 
 ### Pré-requisitos
 
 ```bash
 # Instalar Terraform >= 1.5.0
-brew install terraform   # macOS
-# ou baixe em: https://developer.hashicorp.com/terraform/downloads
+sudo dnf install -y dnf-plugins-core
+sudo dnf config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo
+sudo dnf install terraform -y
+terraform -version
 
 # Configurar credenciais AWS
 aws configure
