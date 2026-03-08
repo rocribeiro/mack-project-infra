@@ -59,8 +59,11 @@ terraform-b3-datalake/
 ---
 
 ## 🚀 Como Usar no cloud shell
+Acessar a conta da aws procurar por cloud shell, e preciso fazer o clone do projeto no cloud shell.
+```bash
+git clone https://github.com/rocribeiro/mack-project-infra.git
 
-### Pré-requisitos
+apos clonar fazer a instalacao do Terraform
 
 ```bash
 # Instalar Terraform >= 1.5.0
@@ -69,14 +72,8 @@ sudo dnf config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinu
 sudo dnf install terraform -y
 terraform -version
 
-# Configurar credenciais AWS
-aws configure
-# AWS Access Key ID: <sua-key>
-# AWS Secret Access Key: <seu-secret>
-# Default region: us-east-1
-```
 
-### Deploy
+### execultar a infra
 
 ```bash
 # 1. Entrar na pasta do projeto
