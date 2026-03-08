@@ -80,7 +80,7 @@ aws configure
 
 ```bash
 # 1. Entrar na pasta do projeto
-cd terraform-b3-datalake
+cd mack-project-infra
 
 # 2. Inicializar o Terraform
 terraform init
