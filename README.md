@@ -62,8 +62,9 @@ terraform-b3-datalake/
 Acessar a conta da aws procurar por cloud shell, e preciso fazer o clone do projeto no cloud shell.
 ```bash
 git clone https://github.com/rocribeiro/mack-project-infra.git
+```
 
-apos clonar fazer a instalacao do Terraform
+Apos clonar fazer a instalacao do Terraform
 
 ```bash
 # Instalar Terraform >= 1.5.0
@@ -71,6 +72,7 @@ sudo dnf install -y dnf-plugins-core
 sudo dnf config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo
 sudo dnf install terraform -y
 terraform -version
+```
 
 
 ### execultar a infra
