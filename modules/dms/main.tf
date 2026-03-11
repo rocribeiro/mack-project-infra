@@ -49,7 +49,7 @@ resource "aws_dms_s3_endpoint" "source" {
   endpoint_id             = "${var.name_prefix}-dms-source-s3"
   endpoint_type           = "source"
   bucket_name             = "${var.name_prefix}-staging"
-  service_access_role_arn = var.dms_role_arn
+  # service_access_role_arn = var.dms_role_arn
 
   csv_delimiter  = ";"
   csv_row_delimiter = "\n"
@@ -67,7 +67,7 @@ resource "aws_dms_s3_endpoint" "target" {
   endpoint_type           = "target"
   bucket_name             = var.s3_bucket_sor_name
   bucket_folder           = "b3-series-historicas"
-  service_access_role_arn = var.dms_role_arn
+  # service_access_role_arn = var.dms_role_arn
 
   # Salva em Parquet para otimizar queries
   data_format          = "parquet"

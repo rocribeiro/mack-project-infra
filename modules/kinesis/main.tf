@@ -46,11 +46,11 @@ resource "aws_kinesis_firehose_delivery_stream" "to_s3" {
 
   kinesis_source_configuration {
     kinesis_stream_arn = aws_kinesis_stream.cotacoes.arn
-    role_arn           = var.kinesis_role_arn
+    # role_arn           = var.kinesis_role_arn
   }
 
   extended_s3_configuration {
-    role_arn            = var.kinesis_role_arn
+    # role_arn            = var.kinesis_role_arn
     bucket_arn          = var.s3_bucket_sor_arn
     prefix              = "cotacoes-live/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/"
     error_output_prefix = "cotacoes-live-errors/!{firehose:error-output-type}/year=!{timestamp:yyyy}/month=!{timestamp:MM}/"

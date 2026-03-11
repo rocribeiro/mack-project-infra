@@ -27,35 +27,35 @@ variable "environment" {
 
 # ---- IAM Roles (usando roles pré-existentes do lab AWS) ----
 
-variable "glue_role_arn" {
-  description = "ARN da role IAM para AWS Glue"
-  type        = string
-  default     = "arn:aws:iam::202521707166:role/EMR_DefaultRole"
-}
+# variable "glue_role_arn" {
+#   description = "ARN da role IAM para AWS Glue"
+#   type        = string
+#   default     = "arn:aws:iam::202521707166:role/EMR_DefaultRole"
+# }
 
-variable "kinesis_role_arn" {
-  description = "ARN da role IAM para Amazon Kinesis"
-  type        = string
-  default     = "arn:aws:iam::202521707166:role/LabRole"
-}
+# variable "kinesis_role_arn" {
+#   description = "ARN da role IAM para Amazon Kinesis"
+#   type        = string
+#   default     = "arn:aws:iam::202521707166:role/LabRole"
+# }
 
-variable "sagemaker_role_arn" {
-  description = "ARN da role IAM para Amazon SageMaker"
-  type        = string
-  default     = "arn:aws:iam::202521707166:role/LabRole"
-}
+# variable "sagemaker_role_arn" {
+#   description = "ARN da role IAM para Amazon SageMaker"
+#   type        = string
+#   default     = "arn:aws:iam::202521707166:role/LabRole"
+# }
 
-variable "dms_role_arn" {
-  description = "ARN da role IAM para AWS DMS (Database Migration Service)"
-  type        = string
-  default     = "arn:aws:iam::202521707166:role/LabRole"
-}
+# variable "dms_role_arn" {
+#   description = "ARN da role IAM para AWS DMS (Database Migration Service)"
+#   type        = string
+#   default     = "arn:aws:iam::202521707166:role/LabRole"
+# }
 
-variable "athena_role_arn" {
-  description = "ARN da role IAM para Amazon Athena"
-  type        = string
-  default     = "arn:aws:iam::202521707166:role/LabRole"
-}
+# variable "athena_role_arn" {
+#   description = "ARN da role IAM para Amazon Athena"
+#   type        = string
+#   default     = "arn:aws:iam::202521707166:role/LabRole"
+# }
 
 # ---- Kinesis ----
 

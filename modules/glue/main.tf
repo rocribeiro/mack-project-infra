@@ -15,7 +15,7 @@ resource "aws_glue_catalog_database" "main" {
 resource "aws_glue_crawler" "bronze" {
   database_name = aws_glue_catalog_database.main.name
   name          = "${var.name_prefix}-crawler-bronze"
-  role          = var.glue_role_arn
+  # role          = var.glue_role_arn
   description   = "Crawler para camada Bronze (SOR) - dados brutos B3"
 
   s3_target {
@@ -42,7 +42,7 @@ resource "aws_glue_crawler" "bronze" {
 resource "aws_glue_crawler" "silver" {
   database_name = aws_glue_catalog_database.main.name
   name          = "${var.name_prefix}-crawler-silver"
-  role          = var.glue_role_arn
+  # role          = var.glue_role_arn
   description   = "Crawler para camada Silver (SOT) - dados tratados"
 
   s3_target {
@@ -55,7 +55,7 @@ resource "aws_glue_crawler" "silver" {
 resource "aws_glue_crawler" "gold" {
   database_name = aws_glue_catalog_database.main.name
   name          = "${var.name_prefix}-crawler-gold"
-  role          = var.glue_role_arn
+  # role          = var.glue_role_arn
   description   = "Crawler para camada Gold (SPEC) - dados analíticos"
 
   s3_target {
@@ -70,7 +70,7 @@ resource "aws_glue_crawler" "gold" {
 
 resource "aws_glue_job" "bronze_to_silver" {
   name         = "${var.name_prefix}-bronze-to-silver"
-  role_arn     = var.glue_role_arn
+  # role_arn     = var.glue_role_arn
   description  = "ETL: dados brutos B3 (Bronze/SOR) → dados tratados (Silver/SOT)"
   glue_version = "4.0"
   worker_type  = var.glue_worker_type
@@ -107,7 +107,7 @@ resource "aws_glue_job" "bronze_to_silver" {
 
 resource "aws_glue_job" "silver_to_gold" {
   name         = "${var.name_prefix}-silver-to-gold"
-  role_arn     = var.glue_role_arn
+  # role_arn     = var.glue_role_arn
   description  = "ETL: dados tratados (Silver/SOT) → dados analíticos e features (Gold/SPEC)"
   glue_version = "4.0"
   worker_type  = var.glue_worker_type
