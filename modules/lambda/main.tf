@@ -47,8 +47,9 @@ resource "aws_sqs_queue" "dlq" {
 }
 
 # ─── Lambda Layer ─────────────────────────────────────────────
-# Usa path absoluto resolvido pelo shell ($(realpath ...))
-# para evitar erro "No such file or directory" no zip.
+# Usa /tmp para o build — tem mais espaço que o home do Cloud Shell.
+# yfinance puxa pandas automaticamente (~150MB descompactado),
+# por isso o build precisa de espaço temporário fora do home (1GB).
 
 resource "null_resource" "build_yahoo_layer" {
   triggers = {
@@ -61,16 +62,16 @@ resource "null_resource" "build_yahoo_layer" {
     command     = <<-EOT
       set -e
 
-      # Resolve caminhos absolutos
-      MODULE_DIR="$(realpath "${path.module}")"
       SRC_DIR="$(realpath "${var.src_path}")"
-      BUILD="$MODULE_DIR/_layer_build"
-      ZIP="$MODULE_DIR/lambda_layer.zip"
+      BUILD="/tmp/yahoo_layer_build_$$"
+      ZIP="/tmp/yahoo_layer_$$.zip"
       BUCKET="${aws_s3_bucket.lambda_code.bucket}"
 
-      echo ">> Module dir: $MODULE_DIR"
-      echo ">> Limpando build anterior..."
-      rm -rf "$BUILD" "$ZIP"
+      echo ">> Build dir: $BUILD"
+      echo ">> Espaco /tmp:"
+      df -h /tmp
+
+      rm -rf "$BUILD"
       mkdir -p "$BUILD/python"
 
       echo ">> Instalando pacotes Yahoo Finance..."
@@ -85,14 +86,17 @@ resource "null_resource" "build_yahoo_layer" {
 
       N=$(ls "$BUILD/python" | wc -l)
       echo ">> $N pacotes instalados"
-      [ "$N" -gt 0 ] || { echo "ERRO: layer vazia!"; exit 1; }
+      [ "$N" -gt 0 ] || { echo "ERRO: layer vazia!"; rm -rf "$BUILD"; exit 1; }
 
-      echo ">> Criando zip em $ZIP..."
+      echo ">> Criando zip..."
       (cd "$BUILD" && zip -r "$ZIP" python/ -q)
       echo ">> Zip: $(du -sh $ZIP | cut -f1)"
 
       echo ">> Upload para s3://$BUCKET/layer.zip"
       aws s3 cp "$ZIP" "s3://$BUCKET/layer.zip"
+
+      echo ">> Limpando /tmp..."
+      rm -rf "$BUILD" "$ZIP"
       echo ">> Concluido"
     EOT
   }
@@ -102,7 +106,7 @@ resource "null_resource" "build_yahoo_layer" {
 
 resource "aws_lambda_layer_version" "deps" {
   layer_name          = "${var.name_prefix}-yahoo-deps"
-  description         = "yfinance + pandas + requests"
+  description         = "yfinance + requests + boto3"
   compatible_runtimes = ["python3.12"]
   s3_bucket           = aws_s3_bucket.lambda_code.bucket
   s3_key              = "layer.zip"

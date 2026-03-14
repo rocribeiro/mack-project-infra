@@ -22,7 +22,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "lambda_b3_code" {
   }
 }
 
-# ─── Layer B3 ─────────────────────────────────────────────────
+# ─── Layer B3 (requests + boto3, build em /tmp) ───────────────
 
 resource "null_resource" "build_b3_layer" {
   triggers = {
@@ -36,15 +36,13 @@ resource "null_resource" "build_b3_layer" {
     command     = <<-EOT
       set -e
 
-      MODULE_DIR="$(realpath "${path.module}")"
       SRC_DIR="$(realpath "${var.src_historico_path}")"
-      BUILD="$MODULE_DIR/_layer_b3"
-      ZIP="$MODULE_DIR/b3_layer.zip"
+      BUILD="/tmp/b3_layer_build_$$"
+      ZIP="/tmp/b3_layer_$$.zip"
       BUCKET="${aws_s3_bucket.lambda_b3_code.bucket}"
 
-      echo ">> Module dir: $MODULE_DIR"
-      echo ">> Limpando build anterior..."
-      rm -rf "$BUILD" "$ZIP"
+      echo ">> Build dir: $BUILD"
+      rm -rf "$BUILD"
       mkdir -p "$BUILD/python"
 
       echo ">> Instalando pacotes B3..."
@@ -59,14 +57,16 @@ resource "null_resource" "build_b3_layer" {
 
       N=$(ls "$BUILD/python" | wc -l)
       echo ">> $N pacotes instalados"
-      [ "$N" -gt 0 ] || { echo "ERRO: layer vazia!"; exit 1; }
+      [ "$N" -gt 0 ] || { echo "ERRO: layer vazia!"; rm -rf "$BUILD"; exit 1; }
 
-      echo ">> Criando zip em $ZIP..."
+      echo ">> Criando zip..."
       (cd "$BUILD" && zip -r "$ZIP" python/ -q)
       echo ">> Zip: $(du -sh $ZIP | cut -f1)"
 
       echo ">> Upload para s3://$BUCKET/b3_layer.zip"
       aws s3 cp "$ZIP" "s3://$BUCKET/b3_layer.zip"
+
+      rm -rf "$BUILD" "$ZIP"
       echo ">> Concluido"
     EOT
   }
@@ -153,7 +153,7 @@ resource "null_resource" "trigger_carga_historica" {
         --function-name ${aws_lambda_function.b3_historico.function_name} \
         --invocation-type Event \
         --region ${var.aws_region} \
-        /dev/null && echo "Carga historica disparada em background."
+        /dev/null && echo "Disparada com sucesso."
     EOT
   }
 
