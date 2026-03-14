@@ -37,6 +37,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "sor" {
   rule {
     id     = "transition-to-ia"
     status = "Enabled"
+    filter {}
     transition {
       days          = var.lifecycle_bronze_days
       storage_class = "STANDARD_IA"
@@ -91,6 +92,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "sot" {
   rule {
     id     = "transition-to-ia"
     status = "Enabled"
+    filter {}
     transition {
       days          = var.lifecycle_silver_days
       storage_class = "STANDARD_IA"
@@ -212,6 +214,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "athena_results" {
   rule {
     id     = "cleanup-old-results"
     status = "Enabled"
+    filter {}
     expiration { days = 30 }
   }
 }

@@ -47,17 +47,23 @@ resource "null_resource" "build_b3_layer" {
 
   provisioner "local-exec" {
     command = <<-EOT
+      set -e
       echo "Instalando dependências da Layer B3..."
       rm -rf ${path.module}/_layer_b3/python
       mkdir -p ${path.module}/_layer_b3/python
-      pip install \
+      pip3 install \
         -r ${var.src_historico_path}/requirements.txt \
         -t ${path.module}/_layer_b3/python \
-        --quiet \
         --platform manylinux2014_x86_64 \
         --only-binary=:all: \
-        --python-version 3.12
-      echo "Layer B3 concluída."
+        --python-version 3.12 \
+        --upgrade
+      COUNT=$(find ${path.module}/_layer_b3/python -maxdepth 1 -mindepth 1 | wc -l)
+      if [ "$COUNT" -eq "0" ]; then
+        echo "ERRO: Layer B3 vazia após pip install!"
+        exit 1
+      fi
+      echo "Layer B3 concluída: $COUNT pacotes instalados."
     EOT
   }
 }

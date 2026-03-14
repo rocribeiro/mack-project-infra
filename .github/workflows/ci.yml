@@ -1,0 +1,361 @@
+###############################################################
+# Pipeline CI - B3 DataLake
+# AWS Academy: credenciais temporárias (expiram a cada 4h)
+#
+# O que esse pipeline FAZ automaticamente:
+#   - Valida formatação do Terraform (fmt)
+#   - Valida sintaxe do Terraform (validate)
+#   - Roda terraform plan (sem aplicar)
+#   - Testa os handlers Python das 3 Lambdas
+#   - Comenta o resultado do plan no PR
+#   - Notifica se tem erro
+#
+# O que NÃO faz (limitação Academy):
+#   - terraform apply  → você executa no Cloud Shell
+#   - terraform destroy → você executa no Cloud Shell
+#
+# Trigger:
+#   - Push em qualquer branch
+#   - Pull Request para main
+###############################################################
+
+name: CI — Validação e Plan
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force_plan:
+        description: "Forçar terraform plan mesmo sem mudanças"
+        required: false
+        default: "false"
+
+env:
+  TF_VERSION:     "1.5.7"
+  PYTHON_VERSION: "3.12"
+  AWS_REGION:     "us-east-1"
+
+###############################################################
+# JOB 1 — Lint e formatação do Terraform
+###############################################################
+jobs:
+
+  terraform-lint:
+    name: 📋 Terraform Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Format Check
+        id: fmt
+        run: terraform fmt -check -recursive
+        continue-on-error: true
+
+      - name: Comentar falha de formato no PR
+        if: steps.fmt.outcome == 'failure' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: [
+                '## ❌ Terraform Format',
+                'Arquivos `.tf` fora do padrão. Rode localmente:',
+                '```bash',
+                'terraform fmt -recursive',
+                '```'
+              ].join('\n')
+            })
+
+      - name: Falhar se formato errado
+        if: steps.fmt.outcome == 'failure'
+        run: exit 1
+
+###############################################################
+# JOB 2 — Testes Python das 3 Lambdas
+###############################################################
+
+  lambda-tests:
+    name: 🧪 Testes Lambda Python
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            src/requirements.txt
+            src_b3_historico/requirements.txt
+            src_b3_fechamento/requirements.txt
+
+      - name: Instalar dependências
+        run: |
+          pip install pytest pytest-cov
+          pip install -r src/requirements.txt
+          pip install -r src_b3_historico/requirements.txt
+
+      # ── Testa Lambda Yahoo Finance ──
+      - name: Testes Lambda Yahoo Finance
+        env:
+          KINESIS_STREAM_NAME: "b3-datalake-dev-cotacoes-stream"
+          AWS_DEFAULT_REGION:  "us-east-1"
+        run: |
+          python -c "
+          import sys, os
+          sys.path.insert(0, 'src')
+          os.environ['KINESIS_STREAM_NAME'] = 'b3-datalake-dev-cotacoes-stream'
+
+          # Testa imports
+          from handler import (
+            ALL_TICKERS, _classify_ticker, _safe_float, _safe_int,
+            _save_tickers_cache, _load_tickers_cache
+          )
+
+          # Testa classificação de tickers
+          assert _classify_ticker('PETR4.SA') == 'acao_pn',  'PETR4 deve ser acao_pn'
+          assert _classify_ticker('VALE3.SA') == 'acao_on',  'VALE3 deve ser acao_on'
+          assert _classify_ticker('BOVA11.SA')== 'fii_ou_etf','BOVA11 deve ser fii_ou_etf'
+          assert _classify_ticker('^BVSP')    == 'indice',    'BVSP deve ser indice'
+
+          # Testa helpers
+          assert _safe_float(10.5)   == 10.5
+          assert _safe_float(None)   is None
+          assert _safe_float('abc')  is None
+          assert _safe_int(3.9)      == 3
+          assert _safe_int(None)     is None
+
+          print('✅ Lambda Yahoo Finance: todos os testes passaram')
+          "
+
+      # ── Testa Lambda B3 Histórico ──
+      - name: Testes Lambda B3 Histórico
+        env:
+          S3_BUCKET_SOR: "b3-datalake-dev-sor"
+        run: |
+          python -c "
+          import sys, os
+          sys.path.insert(0, 'src_b3_historico')
+          os.environ['S3_BUCKET_SOR'] = 'b3-datalake-dev-sor'
+
+          from handler import s3_key_for_year, B3_URL_TEMPLATE
+          from datetime import datetime
+
+          # Testa geração de chaves S3
+          key = s3_key_for_year(2023)
+          assert key == 'b3-series-historicas/ano=2023/COTAHIST_A2023.TXT', f'Key errada: {key}'
+
+          # Testa template de URL
+          url = B3_URL_TEMPLATE.format(ano=2023)
+          assert '2023' in url, 'URL deve conter o ano'
+          assert 'bvmf' in url, 'URL deve ser da B3'
+
+          # Testa cálculo de anos
+          ano_atual = datetime.now().year
+          anos = list(range(ano_atual - 10, ano_atual))
+          assert len(anos) == 10, f'Deve ter 10 anos, tem {len(anos)}'
+          assert ano_atual not in anos, 'Ano atual não deve estar na lista histórica'
+
+          print('✅ Lambda B3 Histórico: todos os testes passaram')
+          "
+
+      # ── Testa Lambda B3 Fechamento ──
+      - name: Testes Lambda B3 Fechamento
+        env:
+          S3_BUCKET_SOR: "b3-datalake-dev-sor"
+        run: |
+          python -c "
+          import sys, os
+          sys.path.insert(0, 'src_b3_fechamento')
+          os.environ['S3_BUCKET_SOR'] = 'b3-datalake-dev-sor'
+
+          from handler import is_dia_util, FERIADOS_NACIONAIS, B3_URL_TEMPLATE
+          from datetime import datetime
+
+          # Testa feriados nacionais fixos
+          assert '01-01' in FERIADOS_NACIONAIS, 'Ano Novo deve ser feriado'
+          assert '12-25' in FERIADOS_NACIONAIS, 'Natal deve ser feriado'
+
+          # Testa URL do ano corrente
+          ano = datetime.now().year
+          url = B3_URL_TEMPLATE.format(ano=ano)
+          assert str(ano) in url, 'URL deve conter o ano atual'
+
+          print('✅ Lambda B3 Fechamento: todos os testes passaram')
+          "
+
+      - name: Resumo dos testes
+        if: always()
+        run: echo "Todos os testes de Lambda concluídos."
+
+###############################################################
+# JOB 3 — Terraform Validate + Plan
+# Usa as credenciais temporárias passadas manualmente via
+# workflow_dispatch (quando quiser rodar o plan com autenticação)
+# Em PRs sem credenciais, faz apenas o validate (sem AWS)
+###############################################################
+
+  terraform-plan:
+    name: 🔍 Terraform Validate & Plan
+    runs-on: ubuntu-latest
+    needs: [terraform-lint, lambda-tests]
+
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      # Configura credenciais APENAS se os secrets estiverem presentes
+      # No Academy: atualize os secrets antes de rodar o workflow_dispatch
+      - name: Configure AWS Credentials (se disponível)
+        id: aws-auth
+        if: |
+          secrets.AWS_ACCESS_KEY_ID != '' &&
+          secrets.AWS_SECRET_ACCESS_KEY != '' &&
+          secrets.AWS_SESSION_TOKEN != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token:     ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region:            ${{ env.AWS_REGION }}
+        continue-on-error: true
+
+      - name: Terraform Init
+        id: init
+        run: |
+          terraform init -backend=false
+        # -backend=false evita erro de S3 backend não configurado
+
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate -no-color
+
+      # Plan só roda se tiver credenciais AWS válidas
+      - name: Terraform Plan
+        id: plan
+        if: steps.aws-auth.outcome == 'success'
+        run: |
+          terraform plan \
+            -no-color \
+            -input=false \
+            -out=tfplan 2>&1 | tee plan_output.txt
+        continue-on-error: true
+
+      # Mensagem no PR com resultado do validate e plan
+      - name: Comentar resultado no PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fmt    = '${{ steps.fmt.outcome }}';
+            const init   = '${{ steps.init.outcome }}';
+            const validate = '${{ steps.validate.outcome }}';
+            const plan   = '${{ steps.plan.outcome }}';
+
+            const icon = (s) => s === 'success' ? '✅' : s === 'skipped' ? '⏭️' : '❌';
+
+            let planText = '';
+            try {
+              const fs = require('fs');
+              if (fs.existsSync('plan_output.txt')) {
+                planText = fs.readFileSync('plan_output.txt', 'utf8');
+                if (planText.length > 50000) planText = planText.slice(0, 50000) + '\n...(truncado)';
+              }
+            } catch(e) {}
+
+            const body = [
+              '## 📋 Resultado do Terraform',
+              '',
+              `| Etapa | Status |`,
+              `|---|---|`,
+              `| Format | ${icon('${{ steps.fmt.outcome }}')} |`,
+              `| Init | ${icon(init)} |`,
+              `| Validate | ${icon(validate)} |`,
+              `| Plan | ${icon(plan)} ${plan === 'skipped' ? '*(sem credenciais AWS — rode o apply no Cloud Shell)*' : ''} |`,
+              '',
+              planText ? `<details><summary>📄 Terraform Plan</summary>\n\n\`\`\`\n${planText}\n\`\`\`\n</details>` : '',
+            ].join('\n');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            });
+
+      - name: Falhar se validate falhou
+        if: steps.validate.outcome == 'failure'
+        run: exit 1
+
+###############################################################
+# JOB 4 — Instrução de Apply no Cloud Shell
+# Gera um resumo no GitHub com os comandos prontos para rodar
+###############################################################
+
+  instrucoes-apply:
+    name: 📖 Instruções para Apply
+    runs-on: ubuntu-latest
+    needs: terraform-plan
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Gerar instruções no Summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          ## 🚀 Validação concluída — aplique no Cloud Shell
+
+          O pipeline de validação passou. Para aplicar na AWS:
+
+          ### 1. Abra o Cloud Shell na AWS
+          > Console AWS → ícone Cloud Shell (canto superior direito)
+
+          ### 2. Atualize o código
+          ```bash
+          cd mack-project-infra
+          git pull origin main
+          ```
+
+          ### 3. Aplique a infraestrutura
+          ```bash
+          terraform init
+          terraform apply -auto-approve
+          ```
+
+          ### 4. Acompanhe os logs das Lambdas
+          ```bash
+          # Verificar carga histórica B3
+          aws logs tail /aws/lambda/b3-datalake-dev-b3-historico --follow
+
+          # Verificar Lambda Yahoo Finance
+          aws logs tail /aws/lambda/b3-datalake-dev-yahoo-to-kinesis --follow
+          ```
+
+          ---
+          > ⚠️ **AWS Academy**: as credenciais expiram a cada 4h.
+          > Se o `terraform apply` falhar com `ExpiredToken`, reabra o Cloud Shell e tente novamente.
+          EOF

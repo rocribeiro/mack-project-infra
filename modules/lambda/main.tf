@@ -118,24 +118,29 @@ resource "aws_lambda_function" "yahoo_to_kinesis" {
 # Se estiver no CloudShell, o pip já está disponível.
 
 resource "null_resource" "build_layer" {
-  # Reconstrói a layer sempre que o requirements.txt mudar
   triggers = {
     requirements_hash = filemd5("${var.src_path}/requirements.txt")
   }
 
   provisioner "local-exec" {
     command = <<-EOT
-      echo "Instalando dependências da Lambda Layer..."
+      set -e
+      echo "Instalando dependências da Lambda Layer (yahoo)..."
       rm -rf ${path.module}/_layer_build/python
       mkdir -p ${path.module}/_layer_build/python
-      pip install \
+      pip3 install \
         -r ${var.src_path}/requirements.txt \
         -t ${path.module}/_layer_build/python \
-        --quiet \
         --platform manylinux2014_x86_64 \
         --only-binary=:all: \
-        --python-version 3.12
-      echo "Layer build concluído."
+        --python-version 3.12 \
+        --upgrade
+      COUNT=$(find ${path.module}/_layer_build/python -maxdepth 1 -mindepth 1 | wc -l)
+      if [ "$COUNT" -eq "0" ]; then
+        echo "ERRO: Layer vazia após pip install!"
+        exit 1
+      fi
+      echo "Layer build concluído: $COUNT pacotes instalados."
     EOT
   }
 }

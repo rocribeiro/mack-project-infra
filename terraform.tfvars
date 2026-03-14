@@ -7,7 +7,7 @@ project_name = "b3-datalake"
 environment  = "dev"
 
 # IAM Roles (AWS Academy)
-glue_role_arn      = "arn:aws:iam::202521707166:role/EMR_DefaultRole"
+glue_role_arn      = "arn:aws:iam::202521707166:role/LabRole"
 kinesis_role_arn   = "arn:aws:iam::202521707166:role/LabRole"
 sagemaker_role_arn = "arn:aws:iam::202521707166:role/LabRole"
 athena_role_arn    = "arn:aws:iam::202521707166:role/LabRole"
