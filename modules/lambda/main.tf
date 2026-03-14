@@ -1,12 +1,5 @@
 ###############################################################
 # Módulo Lambda - Yahoo Finance → Kinesis Data Stream
-# 
-# O módulo empacota o handler.py direto da pasta src/
-# sem precisar de null_resource ou build externo — usa apenas
-# o archive_file do Terraform para zipar e fazer upload.
-#
-# LabRole do AWS Academy já tem permissões amplas, então
-# não criamos IAM roles aqui (apenas reutilizamos kinesis_role_arn).
 ###############################################################
 
 # ─── Empacota src/handler.py em zip ──────────────────────────
@@ -15,11 +8,10 @@ data "archive_file" "lambda_zip" {
   type        = "zip"
   source_dir  = var.src_path
   output_path = "${path.module}/lambda_package.zip"
-  excludes    = ["__pycache__", "*.pyc", "tests"]
+  excludes    = ["__pycache__", "*.pyc", "tests", "requirements.txt"]
 }
 
-# ─── Bucket S3 exclusivo para o pacote da Lambda ─────────────
-# (o código .zip fica aqui; os dados de tickers ficam no SOR)
+# ─── Bucket S3 para o código da Lambda ───────────────────────
 
 resource "aws_s3_bucket" "lambda_code" {
   bucket        = "${var.name_prefix}-lambda-code"
@@ -43,7 +35,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "lambda_code" {
   }
 }
 
-# Faz upload do zip para o S3 (permite versionamento do código)
 resource "aws_s3_object" "lambda_zip" {
   bucket = aws_s3_bucket.lambda_code.id
   key    = "handler.zip"
@@ -51,7 +42,7 @@ resource "aws_s3_object" "lambda_zip" {
   etag   = data.archive_file.lambda_zip.output_md5
 }
 
-# ─── CloudWatch Log Group (criado antes da Lambda) ───────────
+# ─── CloudWatch Log Group ─────────────────────────────────────
 
 resource "aws_cloudwatch_log_group" "lambda" {
   name              = "/aws/lambda/${var.name_prefix}-yahoo-to-kinesis"
@@ -62,16 +53,81 @@ resource "aws_cloudwatch_log_group" "lambda" {
 
 resource "aws_sqs_queue" "dlq" {
   name                      = "${var.name_prefix}-lambda-yahoo-dlq"
-  message_retention_seconds = 1209600 # 14 dias
+  message_retention_seconds = 1209600
+}
+
+# ─── Lambda Layer — build via null_resource (roda no apply) ──
+#
+# Usa null_resource + local-exec para instalar as dependências.
+# O data "archive_file" tem depends_on no null_resource, garantindo
+# que a pasta já existe quando o zip for criado.
+# Isso resolve o problema do data "external" que rodava no plan
+# sem acesso à rede.
+
+resource "null_resource" "build_layer" {
+  triggers = {
+    requirements_hash = filemd5("${var.src_path}/requirements.txt")
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      set -e
+      echo "=== Instalando dependencias da Layer Yahoo Finance ==="
+      rm -rf "${path.module}/_layer_build"
+      mkdir -p "${path.module}/_layer_build/python"
+      pip3 install \
+        -r "${var.src_path}/requirements.txt" \
+        -t "${path.module}/_layer_build/python" \
+        --platform manylinux2014_x86_64 \
+        --only-binary=:all: \
+        --python-version 3.12 \
+        --upgrade \
+        --no-cache-dir
+      COUNT=$(find "${path.module}/_layer_build/python" -maxdepth 1 -mindepth 1 | wc -l)
+      echo "Pacotes instalados: $COUNT"
+      if [ "$COUNT" -eq "0" ]; then
+        echo "ERRO: Layer vazia apos pip install!"
+        exit 1
+      fi
+      echo "=== Layer build concluido ==="
+    EOT
+  }
+}
+
+data "archive_file" "layer_zip" {
+  type        = "zip"
+  source_dir  = "${path.module}/_layer_build"
+  output_path = "${path.module}/lambda_layer.zip"
+  depends_on  = [null_resource.build_layer]
+}
+
+resource "aws_s3_object" "layer_zip" {
+  bucket = aws_s3_bucket.lambda_code.id
+  key    = "layer.zip"
+  source = data.archive_file.layer_zip.output_path
+  etag   = data.archive_file.layer_zip.output_md5
+
+  depends_on = [null_resource.build_layer]
+}
+
+resource "aws_lambda_layer_version" "deps" {
+  layer_name          = "${var.name_prefix}-yahoo-deps"
+  description         = "yfinance + pandas + requests para coleta B3"
+  compatible_runtimes = ["python3.12"]
+
+  s3_bucket        = aws_s3_bucket.lambda_code.id
+  s3_key           = aws_s3_object.layer_zip.key
+  source_code_hash = data.archive_file.layer_zip.output_base64sha256
+
+  depends_on = [aws_s3_object.layer_zip]
 }
 
 # ─── Lambda Function ──────────────────────────────────────────
 
 resource "aws_lambda_function" "yahoo_to_kinesis" {
   function_name = "${var.name_prefix}-yahoo-to-kinesis"
-  description   = "Coleta cotações Yahoo Finance (todos ativos B3) e publica no Kinesis"
+  description   = "Coleta cotacoes Yahoo Finance (todos ativos B3) e publica no Kinesis"
 
-  # Código via S3 (mais estável que upload direto no Academy)
   s3_bucket        = aws_s3_bucket.lambda_code.id
   s3_key           = aws_s3_object.lambda_zip.key
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256
@@ -79,10 +135,9 @@ resource "aws_lambda_function" "yahoo_to_kinesis" {
   handler     = "handler.lambda_handler"
   runtime     = "python3.12"
   role        = var.lambda_role_arn
-  timeout     = 300   # 5 min — necessário para ~500 tickers em paralelo
-  memory_size = 1024  # pandas + yfinance + 8 threads simultâneas
+  timeout     = 300
+  memory_size = 1024
 
-  # Dependências (yfinance, pandas, requests) são instaladas via Lambda Layer
   layers = [aws_lambda_layer_version.deps.arn]
 
   environment {
@@ -104,56 +159,21 @@ resource "aws_lambda_function" "yahoo_to_kinesis" {
   }
 
   tracing_config {
-    mode = "PassThrough" # X-Ray desativado no Academy (sem permissão)
+    mode = "PassThrough"
   }
 
   depends_on = [
     aws_cloudwatch_log_group.lambda,
     aws_s3_object.lambda_zip,
+    aws_lambda_layer_version.deps,
   ]
 }
 
-# ─── Lambda Layer — dependências Python ──────────────────────
-# O layer é gerado via um script Python chamado pelo data source "external".
-# Dessa forma, o Terraform consegue rodar "plan" mesmo sem o layer estar
-# pré-gerado, e o zip é criado durante a fase de avaliação.
+# ─── EventBridge ─────────────────────────────────────────────
 
-data "external" "build_layer" {
-  program = ["python3", "${path.module}/build_layer.py"]
-
-  query = {
-    build_dir      = "${path.module}/_layer_build"
-    requirements   = "${var.src_path}/requirements.txt"
-    output_zip     = "${path.module}/lambda_layer.zip"
-    python_version = "3.12"
-  }
-}
-
-resource "aws_s3_object" "layer_zip" {
-  bucket = aws_s3_bucket.lambda_code.id
-  key    = "layer.zip"
-  source = data.external.build_layer.result.zip_path
-}
-
-resource "aws_lambda_layer_version" "deps" {
-  layer_name          = "${var.name_prefix}-yahoo-deps"
-  description         = "yfinance + pandas + requests para coleta B3"
-  compatible_runtimes = ["python3.12"]
-
-  s3_bucket        = aws_s3_bucket.lambda_code.id
-  s3_key           = aws_s3_object.layer_zip.key
-  source_code_hash = filebase64sha256(data.external.build_layer.result.zip_path)
-
-  depends_on = [aws_s3_object.layer_zip]
-}
-
-# ─── EventBridge — schedule de execução ──────────────────────
-
-# Coleta a cada 5 minutos durante o pregão B3
-# Horário do pregão: 10h–18h BRT = 13h–21h UTC (dias úteis)
 resource "aws_cloudwatch_event_rule" "pregao" {
   name                = "${var.name_prefix}-coleta-pregao"
-  description         = "Coleta cotações B3 a cada 5min durante pregão (10h-18h BRT)"
+  description         = "Coleta cotacoes B3 a cada 5min durante pregao (10h-18h BRT)"
   schedule_expression = "cron(*/5 13-21 ? * MON-FRI *)"
   state               = "ENABLED"
 }
@@ -172,7 +192,6 @@ resource "aws_lambda_permission" "allow_eventbridge" {
   source_arn    = aws_cloudwatch_event_rule.pregao.arn
 }
 
-# Coleta extra na abertura do pregão (9h30 BRT = 12h30 UTC)
 resource "aws_cloudwatch_event_rule" "abertura" {
   name                = "${var.name_prefix}-coleta-abertura"
   description         = "Coleta snapshot de abertura B3 (9h30 BRT)"
@@ -207,25 +226,19 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
   statistic           = "Sum"
   threshold           = 3
   treat_missing_data  = "notBreaching"
-
-  dimensions = {
-    FunctionName = aws_lambda_function.yahoo_to_kinesis.function_name
-  }
+  dimensions          = { FunctionName = aws_lambda_function.yahoo_to_kinesis.function_name }
 }
 
 resource "aws_cloudwatch_metric_alarm" "lambda_timeout_risk" {
   alarm_name          = "${var.name_prefix}-lambda-yahoo-duration"
-  alarm_description   = "Lambda Yahoo Finance próxima do timeout (>240s)"
+  alarm_description   = "Lambda Yahoo Finance proxima do timeout (>240s)"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
   metric_name         = "Duration"
   namespace           = "AWS/Lambda"
   period              = 300
   statistic           = "Average"
-  threshold           = 240000 # ms
+  threshold           = 240000
   treat_missing_data  = "notBreaching"
-
-  dimensions = {
-    FunctionName = aws_lambda_function.yahoo_to_kinesis.function_name
-  }
+  dimensions          = { FunctionName = aws_lambda_function.yahoo_to_kinesis.function_name }
 }
