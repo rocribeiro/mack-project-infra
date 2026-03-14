@@ -2,16 +2,12 @@
 # Módulo Lambda - Yahoo Finance → Kinesis Data Stream
 ###############################################################
 
-# ─── Empacota handler.py ──────────────────────────────────────
-
 data "archive_file" "lambda_zip" {
   type        = "zip"
   source_dir  = var.src_path
   output_path = "${path.module}/lambda_package.zip"
   excludes    = ["__pycache__", "*.pyc", "tests", "requirements.txt"]
 }
-
-# ─── Bucket S3 ────────────────────────────────────────────────
 
 resource "aws_s3_bucket" "lambda_code" {
   bucket        = "${var.name_prefix}-lambda-code"
@@ -40,8 +36,6 @@ resource "aws_s3_object" "lambda_zip" {
   etag   = data.archive_file.lambda_zip.output_md5
 }
 
-# ─── CloudWatch + DLQ ────────────────────────────────────────
-
 resource "aws_cloudwatch_log_group" "lambda" {
   name              = "/aws/lambda/${var.name_prefix}-yahoo-to-kinesis"
   retention_in_days = 14
@@ -53,33 +47,35 @@ resource "aws_sqs_queue" "dlq" {
 }
 
 # ─── Lambda Layer ─────────────────────────────────────────────
-#
-# O null_resource instala as dependências, cria o zip E faz o
-# upload para o S3 diretamente via `aws s3 cp`.
-# Isso evita que o aws_s3_object tente abrir o zip antes
-# do null_resource terminar (problema com source + depends_on).
+# Usa path absoluto resolvido pelo shell ($(realpath ...))
+# para evitar erro "No such file or directory" no zip.
 
 resource "null_resource" "build_yahoo_layer" {
   triggers = {
-    req_hash   = filemd5("${var.src_path}/requirements.txt")
-    bucket     = aws_s3_bucket.lambda_code.bucket
+    req_hash = filemd5("${var.src_path}/requirements.txt")
+    bucket   = aws_s3_bucket.lambda_code.bucket
   }
 
   provisioner "local-exec" {
     interpreter = ["/bin/bash", "-c"]
     command     = <<-EOT
       set -e
-      BUILD="${path.module}/_layer_build"
-      ZIP="${path.module}/lambda_layer.zip"
+
+      # Resolve caminhos absolutos
+      MODULE_DIR="$(realpath "${path.module}")"
+      SRC_DIR="$(realpath "${var.src_path}")"
+      BUILD="$MODULE_DIR/_layer_build"
+      ZIP="$MODULE_DIR/lambda_layer.zip"
       BUCKET="${aws_s3_bucket.lambda_code.bucket}"
 
+      echo ">> Module dir: $MODULE_DIR"
       echo ">> Limpando build anterior..."
       rm -rf "$BUILD" "$ZIP"
       mkdir -p "$BUILD/python"
 
       echo ">> Instalando pacotes Yahoo Finance..."
       pip3 install \
-        -r "${var.src_path}/requirements.txt" \
+        -r "$SRC_DIR/requirements.txt" \
         -t "$BUILD/python" \
         --platform manylinux2014_x86_64 \
         --only-binary=:all: \
@@ -91,32 +87,27 @@ resource "null_resource" "build_yahoo_layer" {
       echo ">> $N pacotes instalados"
       [ "$N" -gt 0 ] || { echo "ERRO: layer vazia!"; exit 1; }
 
-      echo ">> Criando zip..."
+      echo ">> Criando zip em $ZIP..."
       (cd "$BUILD" && zip -r "$ZIP" python/ -q)
-      echo ">> Zip criado: $(du -sh $ZIP | cut -f1)"
+      echo ">> Zip: $(du -sh $ZIP | cut -f1)"
 
-      echo ">> Fazendo upload para S3..."
+      echo ">> Upload para s3://$BUCKET/layer.zip"
       aws s3 cp "$ZIP" "s3://$BUCKET/layer.zip"
-      echo ">> Upload concluído"
+      echo ">> Concluido"
     EOT
   }
 
   depends_on = [aws_s3_bucket.lambda_code]
 }
 
-# Layer version — referencia o zip já no S3 (não precisa de source local)
 resource "aws_lambda_layer_version" "deps" {
   layer_name          = "${var.name_prefix}-yahoo-deps"
   description         = "yfinance + pandas + requests"
   compatible_runtimes = ["python3.12"]
-
-  s3_bucket = aws_s3_bucket.lambda_code.bucket
-  s3_key    = "layer.zip"
-
-  depends_on = [null_resource.build_yahoo_layer]
+  s3_bucket           = aws_s3_bucket.lambda_code.bucket
+  s3_key              = "layer.zip"
+  depends_on          = [null_resource.build_yahoo_layer]
 }
-
-# ─── Lambda Function ──────────────────────────────────────────
 
 resource "aws_lambda_function" "yahoo_to_kinesis" {
   function_name    = "${var.name_prefix}-yahoo-to-kinesis"
@@ -147,18 +138,14 @@ resource "aws_lambda_function" "yahoo_to_kinesis" {
 
   dead_letter_config { target_arn = aws_sqs_queue.dlq.arn }
   tracing_config    { mode = "PassThrough" }
-
   depends_on = [
     aws_cloudwatch_log_group.lambda,
     aws_lambda_layer_version.deps,
   ]
 }
 
-# ─── EventBridge ─────────────────────────────────────────────
-
 resource "aws_cloudwatch_event_rule" "pregao" {
   name                = "${var.name_prefix}-coleta-pregao"
-  description         = "Coleta cotacoes B3 a cada 5min (10h-18h BRT)"
   schedule_expression = "cron(*/5 13-21 ? * MON-FRI *)"
   state               = "ENABLED"
 }

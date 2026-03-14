@@ -2,8 +2,6 @@
 # Módulo Lambda B3 - Carga Histórica + Fechamento Diário
 ###############################################################
 
-# ─── Bucket S3 ────────────────────────────────────────────────
-
 resource "aws_s3_bucket" "lambda_b3_code" {
   bucket        = "${var.name_prefix}-lambda-b3-code"
   force_destroy = true
@@ -24,7 +22,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "lambda_b3_code" {
   }
 }
 
-# ─── Layer B3 — pip + zip + upload S3 no null_resource ───────
+# ─── Layer B3 ─────────────────────────────────────────────────
 
 resource "null_resource" "build_b3_layer" {
   triggers = {
@@ -37,17 +35,21 @@ resource "null_resource" "build_b3_layer" {
     interpreter = ["/bin/bash", "-c"]
     command     = <<-EOT
       set -e
-      BUILD="${path.module}/_layer_b3"
-      ZIP="${path.module}/b3_layer.zip"
+
+      MODULE_DIR="$(realpath "${path.module}")"
+      SRC_DIR="$(realpath "${var.src_historico_path}")"
+      BUILD="$MODULE_DIR/_layer_b3"
+      ZIP="$MODULE_DIR/b3_layer.zip"
       BUCKET="${aws_s3_bucket.lambda_b3_code.bucket}"
 
+      echo ">> Module dir: $MODULE_DIR"
       echo ">> Limpando build anterior..."
       rm -rf "$BUILD" "$ZIP"
       mkdir -p "$BUILD/python"
 
       echo ">> Instalando pacotes B3..."
       pip3 install \
-        -r "${var.src_historico_path}/requirements.txt" \
+        -r "$SRC_DIR/requirements.txt" \
         -t "$BUILD/python" \
         --platform manylinux2014_x86_64 \
         --only-binary=:all: \
@@ -59,13 +61,13 @@ resource "null_resource" "build_b3_layer" {
       echo ">> $N pacotes instalados"
       [ "$N" -gt 0 ] || { echo "ERRO: layer vazia!"; exit 1; }
 
-      echo ">> Criando zip..."
+      echo ">> Criando zip em $ZIP..."
       (cd "$BUILD" && zip -r "$ZIP" python/ -q)
       echo ">> Zip: $(du -sh $ZIP | cut -f1)"
 
-      echo ">> Fazendo upload para S3..."
+      echo ">> Upload para s3://$BUCKET/b3_layer.zip"
       aws s3 cp "$ZIP" "s3://$BUCKET/b3_layer.zip"
-      echo ">> Upload concluído"
+      echo ">> Concluido"
     EOT
   }
 
