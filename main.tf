@@ -13,15 +13,6 @@ terraform {
       version = "~> 5.0"
     }
   }
-
-  # Descomente para usar backend remoto (S3 + DynamoDB para state locking)
-  # backend "s3" {
-  #   bucket         = "meu-terraform-state-bucket"
-  #   key            = "b3-datalake/terraform.tfstate"
-  #   region         = "us-east-1"
-  #   dynamodb_table = "terraform-locks"
-  #   encrypt        = true
-  # }
 }
 
 provider "aws" {
@@ -45,51 +36,62 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 locals {
-  account_id = data.aws_caller_identity.current.account_id
-  region     = data.aws_region.current.name
+  account_id  = data.aws_caller_identity.current.account_id
+  region      = data.aws_region.current.name
   name_prefix = "${var.project_name}-${var.environment}"
 }
 
 ###############################################################
-# MÓDULOS
+# S3 - Buckets Medallion
 ###############################################################
 
-# Módulo IAM comentado - usando roles pré-existentes do lab
-# module "iam" {
-#   source      = "./modules/iam"
-#   name_prefix = local.name_prefix
-#   account_id  = local.account_id
-#   region      = local.region
-#   project_name = var.project_name
-#   environment  = var.environment
-# }
-
 module "s3" {
-  source      = "./modules/s3"
-  name_prefix = local.name_prefix
-  environment = var.environment
-  account_id  = local.account_id
+  source                = "./modules/s3"
+  name_prefix           = local.name_prefix
+  environment           = var.environment
+  account_id            = local.account_id
+  lifecycle_bronze_days = var.s3_lifecycle_bronze_days
+  lifecycle_silver_days = var.s3_lifecycle_silver_days
 }
+
+###############################################################
+# GLUE - ETL + Data Catalog
+###############################################################
 
 module "glue" {
-  source             = "./modules/glue"
-  name_prefix        = local.name_prefix
-  environment        = var.environment
-  glue_role_arn      = var.glue_role_arn
-  s3_bucket_sor      = module.s3.bucket_sor_name
-  s3_bucket_sot      = module.s3.bucket_sot_name
-  s3_bucket_spec     = module.s3.bucket_spec_name
-  s3_scripts_bucket  = module.s3.bucket_scripts_name
+  source                 = "./modules/glue"
+  name_prefix            = local.name_prefix
+  environment            = var.environment
+  glue_role_arn          = var.glue_role_arn
+  s3_bucket_sor          = module.s3.bucket_sor_name
+  s3_bucket_sot          = module.s3.bucket_sot_name
+  s3_bucket_spec         = module.s3.bucket_spec_name
+  s3_scripts_bucket      = module.s3.bucket_scripts_name
+  glue_worker_type       = var.glue_worker_type
+  glue_number_of_workers = var.glue_number_of_workers
+  glue_max_retries       = var.glue_max_retries
 }
 
+###############################################################
+# KINESIS - Streaming cotações ao vivo
+###############################################################
+
 module "kinesis" {
-  source      = "./modules/kinesis"
-  name_prefix = local.name_prefix
-  environment = var.environment
-  kinesis_role_arn   = var.kinesis_role_arn
-  s3_bucket_sor_arn  = module.s3.bucket_sor_arn
-  s3_bucket_sor_name = module.s3.bucket_sor_name
+  source                       = "./modules/kinesis"
+  name_prefix                  = local.name_prefix
+  environment                  = var.environment
+  kinesis_role_arn             = var.kinesis_role_arn
+  s3_bucket_sor_arn            = module.s3.bucket_sor_arn
+  s3_bucket_sor_name           = module.s3.bucket_sor_name
+  shard_count                  = var.kinesis_stream_shard_count
+  retention_hours              = var.kinesis_stream_retention_hours
+  firehose_buffer_size_mb      = var.kinesis_firehose_buffer_size_mb
+  firehose_buffer_interval_sec = var.kinesis_firehose_buffer_interval_sec
 }
+
+###############################################################
+# ATHENA - Query engine serverless
+###############################################################
 
 module "athena" {
   source             = "./modules/athena"
@@ -99,19 +101,58 @@ module "athena" {
   glue_database_name = module.glue.database_name
 }
 
+###############################################################
+# SAGEMAKER - Modelagem preditiva
+###############################################################
+
 module "sagemaker" {
-  source            = "./modules/sagemaker"
-  name_prefix       = local.name_prefix
-  environment       = var.environment
+  source             = "./modules/sagemaker"
+  name_prefix        = local.name_prefix
+  environment        = var.environment
   sagemaker_role_arn = var.sagemaker_role_arn
-  s3_bucket_spec    = module.s3.bucket_spec_name
+  s3_bucket_spec     = module.s3.bucket_spec_name
+  instance_type      = var.sagemaker_instance_type
 }
 
-module "dms" {
-  source       = "./modules/dms"
-  name_prefix  = local.name_prefix
-  environment  = var.environment
-  dms_role_arn = var.dms_role_arn
-  s3_bucket_sor_arn  = module.s3.bucket_sor_arn
-  s3_bucket_sor_name = module.s3.bucket_sor_name
+###############################################################
+# LAMBDA 1 - Yahoo Finance → Kinesis Data Stream
+# Coleta todos os ~400-500 ativos ativos da B3 a cada 5min
+###############################################################
+
+module "lambda_yahoo" {
+  source = "./modules/lambda"
+
+  name_prefix         = local.name_prefix
+  environment         = var.environment
+  lambda_role_arn     = var.kinesis_role_arn
+  kinesis_stream_name = module.kinesis.stream_name
+  kinesis_stream_arn  = module.kinesis.stream_arn
+  tickers_s3_bucket   = module.s3.bucket_sor_name
+  src_path            = "${path.module}/src"
+  aws_region          = var.aws_region
+  fetch_period        = var.lambda_fetch_period
+  fetch_interval      = var.lambda_fetch_interval
+  yf_chunk_size       = var.lambda_yf_chunk_size
+  yf_max_workers      = var.lambda_yf_max_workers
+}
+
+###############################################################
+# LAMBDA 2 - Carga Histórica B3 (10 anos)
+# Baixa COTAHIST_A{YYYY}.ZIP dos últimos N anos → S3 SOR
+# Roda uma vez automaticamente no terraform apply
+###############################################################
+
+module "lambda_b3" {
+  source = "./modules/lambda_b3"
+
+  name_prefix         = local.name_prefix
+  environment         = var.environment
+  lambda_role_arn     = var.kinesis_role_arn
+  s3_bucket_sor_name  = module.s3.bucket_sor_name
+  s3_bucket_sor_arn   = module.s3.bucket_sor_arn
+  glue_workflow_name  = module.glue.workflow_name
+  src_historico_path  = "${path.module}/src_b3_historico"
+  src_fechamento_path = "${path.module}/src_b3_fechamento"
+  anos_historico      = var.anos_historico
+  aws_region          = var.aws_region
 }
