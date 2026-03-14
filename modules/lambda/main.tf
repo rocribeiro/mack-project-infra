@@ -114,51 +114,25 @@ resource "aws_lambda_function" "yahoo_to_kinesis" {
 }
 
 # ─── Lambda Layer — dependências Python ──────────────────────
-# O layer é gerado com um script de build que roda via null_resource.
-# Se estiver no CloudShell, o pip já está disponível.
+# O layer é gerado via um script Python chamado pelo data source "external".
+# Dessa forma, o Terraform consegue rodar "plan" mesmo sem o layer estar
+# pré-gerado, e o zip é criado durante a fase de avaliação.
 
-resource "null_resource" "build_layer" {
-  triggers = {
-    requirements_hash = filemd5("${var.src_path}/requirements.txt")
+data "external" "build_layer" {
+  program = ["python3", "${path.module}/build_layer.py"]
+
+  query = {
+    build_dir      = "${path.module}/_layer_build"
+    requirements   = "${var.src_path}/requirements.txt"
+    output_zip     = "${path.module}/lambda_layer.zip"
+    python_version = "3.12"
   }
-
-  provisioner "local-exec" {
-    command = <<-EOT
-      set -e
-      echo "Instalando dependências da Lambda Layer (yahoo)..."
-      rm -rf ${path.module}/_layer_build/python
-      mkdir -p ${path.module}/_layer_build/python
-      pip3 install \
-        -r ${var.src_path}/requirements.txt \
-        -t ${path.module}/_layer_build/python \
-        --platform manylinux2014_x86_64 \
-        --only-binary=:all: \
-        --python-version 3.12 \
-        --upgrade
-      COUNT=$(find ${path.module}/_layer_build/python -maxdepth 1 -mindepth 1 | wc -l)
-      if [ "$COUNT" -eq "0" ]; then
-        echo "ERRO: Layer vazia após pip install!"
-        exit 1
-      fi
-      echo "Layer build concluído: $COUNT pacotes instalados."
-    EOT
-  }
-}
-
-data "archive_file" "layer_zip" {
-  type        = "zip"
-  source_dir  = "${path.module}/_layer_build"
-  output_path = "${path.module}/lambda_layer.zip"
-  depends_on  = [null_resource.build_layer]
 }
 
 resource "aws_s3_object" "layer_zip" {
   bucket = aws_s3_bucket.lambda_code.id
   key    = "layer.zip"
-  source = data.archive_file.layer_zip.output_path
-  etag   = data.archive_file.layer_zip.output_md5
-
-  depends_on = [null_resource.build_layer]
+  source = data.external.build_layer.result.zip_path
 }
 
 resource "aws_lambda_layer_version" "deps" {
@@ -168,7 +142,7 @@ resource "aws_lambda_layer_version" "deps" {
 
   s3_bucket        = aws_s3_bucket.lambda_code.id
   s3_key           = aws_s3_object.layer_zip.key
-  source_code_hash = data.archive_file.layer_zip.output_base64sha256
+  source_code_hash = filebase64sha256(data.external.build_layer.result.zip_path)
 
   depends_on = [aws_s3_object.layer_zip]
 }

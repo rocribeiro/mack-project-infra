@@ -38,59 +38,40 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "lambda_b3_code" {
 # ─── Layer compartilhada (requests + boto3) ──────────────────
 # Ambas as Lambdas usam só requests e boto3 — muito mais leve que
 # a layer da Yahoo Finance (sem pandas/yfinance).
+#
+# O layer é gerado via um script Python chamado pelo data source "external".
+# Isso permite que "terraform plan" rode mesmo se o layer ainda não existir.
 
-resource "null_resource" "build_b3_layer" {
-  triggers = {
-    req_historico  = filemd5("${var.src_historico_path}/requirements.txt")
-    req_fechamento = filemd5("${var.src_fechamento_path}/requirements.txt")
+data "external" "build_b3_layer" {
+  program = ["python3", "${path.module}/build_layer.py"]
+
+  query = {
+    build_dir      = "${path.module}/_layer_b3"
+    requirements   = jsonencode([
+      "${var.src_historico_path}/requirements.txt",
+      "${var.src_fechamento_path}/requirements.txt",
+    ])
+    output_zip     = "${path.module}/b3_layer.zip"
+    python_version = "3.12"
   }
-
-  provisioner "local-exec" {
-    command = <<-EOT
-      set -e
-      echo "Instalando dependências da Layer B3..."
-      rm -rf ${path.module}/_layer_b3/python
-      mkdir -p ${path.module}/_layer_b3/python
-      pip3 install \
-        -r ${var.src_historico_path}/requirements.txt \
-        -t ${path.module}/_layer_b3/python \
-        --platform manylinux2014_x86_64 \
-        --only-binary=:all: \
-        --python-version 3.12 \
-        --upgrade
-      COUNT=$(find ${path.module}/_layer_b3/python -maxdepth 1 -mindepth 1 | wc -l)
-      if [ "$COUNT" -eq "0" ]; then
-        echo "ERRO: Layer B3 vazia após pip install!"
-        exit 1
-      fi
-      echo "Layer B3 concluída: $COUNT pacotes instalados."
-    EOT
-  }
-}
-
-data "archive_file" "b3_layer_zip" {
-  type        = "zip"
-  source_dir  = "${path.module}/_layer_b3"
-  output_path = "${path.module}/b3_layer.zip"
-  depends_on  = [null_resource.build_b3_layer]
 }
 
 resource "aws_s3_object" "b3_layer_zip" {
   bucket = aws_s3_bucket.lambda_b3_code.id
   key    = "b3_layer.zip"
-  source = data.archive_file.b3_layer_zip.output_path
-  etag   = data.archive_file.b3_layer_zip.output_md5
-  depends_on = [null_resource.build_b3_layer]
+  source = data.external.build_b3_layer.result.zip_path
 }
 
 resource "aws_lambda_layer_version" "b3_deps" {
   layer_name          = "${var.name_prefix}-b3-deps"
   description         = "requests + boto3 para ingestão B3"
   compatible_runtimes = ["python3.12"]
-  s3_bucket           = aws_s3_bucket.lambda_b3_code.id
-  s3_key              = aws_s3_object.b3_layer_zip.key
-  source_code_hash    = data.archive_file.b3_layer_zip.output_base64sha256
-  depends_on          = [aws_s3_object.b3_layer_zip]
+
+  s3_bucket        = aws_s3_bucket.lambda_b3_code.id
+  s3_key           = aws_s3_object.b3_layer_zip.key
+  source_code_hash = filebase64sha256(data.external.build_b3_layer.result.zip_path)
+
+  depends_on = [aws_s3_object.b3_layer_zip]
 }
 
 # ═══════════════════════════════════════════════════════════════
