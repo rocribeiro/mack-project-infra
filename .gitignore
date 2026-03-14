@@ -1,0 +1,27 @@
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+tfplan
+
+# Lambda layer build artifacts (gerados pelo terraform apply)
+modules/lambda/_layer_build/
+modules/lambda/lambda_layer.zip
+modules/lambda/lambda_package.zip
+modules/lambda_b3/_layer_b3/
+modules/lambda_b3/b3_layer.zip
+modules/lambda_b3/b3_historico.zip
+modules/lambda_b3/b3_fechamento.zip
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Credenciais — NUNCA commitar
+.env
+.env.*
+*.credentials
+terraform.tfvars.local

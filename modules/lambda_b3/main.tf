@@ -2,7 +2,7 @@
 # Módulo Lambda B3 - Carga Histórica + Fechamento Diário
 ###############################################################
 
-# ─── Bucket S3 para código das Lambdas B3 ────────────────────
+# ─── Bucket S3 ────────────────────────────────────────────────
 
 resource "aws_s3_bucket" "lambda_b3_code" {
   bucket        = "${var.name_prefix}-lambda-b3-code"
@@ -24,10 +24,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "lambda_b3_code" {
   }
 }
 
-# ─── Layer B3 — build via null_resource (roda no apply) ──────
-#
-# Mesmo fix do módulo lambda: usa null_resource + local-exec
-# em vez de data "external" que rodava no plan sem rede.
+# ─── Lambda Layer B3 ──────────────────────────────────────────
 
 resource "null_resource" "build_b3_layer" {
   triggers = {
@@ -36,60 +33,61 @@ resource "null_resource" "build_b3_layer" {
   }
 
   provisioner "local-exec" {
-    command = <<-EOT
+    interpreter = ["/bin/bash", "-c"]
+    command     = <<-EOT
       set -e
-      echo "=== Instalando dependencias da Layer B3 ==="
-      rm -rf "${path.module}/_layer_b3"
-      mkdir -p "${path.module}/_layer_b3/python"
+      BUILD="${path.module}/_layer_b3"
+      ZIP="${path.module}/b3_layer.zip"
+
+      echo ">> Limpando build anterior..."
+      rm -rf "$BUILD"
+      mkdir -p "$BUILD/python"
+
+      echo ">> Instalando pacotes B3..."
       pip3 install \
         -r "${var.src_historico_path}/requirements.txt" \
-        -t "${path.module}/_layer_b3/python" \
+        -t "$BUILD/python" \
         --platform manylinux2014_x86_64 \
         --only-binary=:all: \
         --python-version 3.12 \
         --upgrade \
         --no-cache-dir
-      COUNT=$(find "${path.module}/_layer_b3/python" -maxdepth 1 -mindepth 1 | wc -l)
-      echo "Pacotes instalados: $COUNT"
-      if [ "$COUNT" -eq "0" ]; then
-        echo "ERRO: Layer B3 vazia apos pip install!"
-        exit 1
-      fi
-      echo "=== Layer B3 build concluido ==="
+
+      N=$(ls "$BUILD/python" | wc -l)
+      echo ">> $N pacotes instalados"
+      [ "$N" -gt 0 ] || { echo "ERRO: layer vazia!"; exit 1; }
+
+      echo ">> Criando zip..."
+      rm -f "$ZIP"
+      (cd "$BUILD" && zip -r "$ZIP" python/ -q)
+      echo ">> Zip: $(du -sh $ZIP | cut -f1)"
     EOT
   }
 }
 
-data "archive_file" "b3_layer_zip" {
-  type        = "zip"
-  source_dir  = "${path.module}/_layer_b3"
-  output_path = "${path.module}/b3_layer.zip"
-  depends_on  = [null_resource.build_b3_layer]
-}
-
 resource "aws_s3_object" "b3_layer_zip" {
-  bucket = aws_s3_bucket.lambda_b3_code.id
-  key    = "b3_layer.zip"
-  source = data.archive_file.b3_layer_zip.output_path
-  etag   = data.archive_file.b3_layer_zip.output_md5
-
+  bucket     = aws_s3_bucket.lambda_b3_code.id
+  key        = "b3_layer.zip"
+  source     = "${path.module}/b3_layer.zip"
+  etag       = null_resource.build_b3_layer.id
   depends_on = [null_resource.build_b3_layer]
+
+  lifecycle {
+    replace_triggered_by = [null_resource.build_b3_layer]
+  }
 }
 
 resource "aws_lambda_layer_version" "b3_deps" {
   layer_name          = "${var.name_prefix}-b3-deps"
   description         = "requests + boto3 para ingestao B3"
   compatible_runtimes = ["python3.12"]
-
-  s3_bucket        = aws_s3_bucket.lambda_b3_code.id
-  s3_key           = aws_s3_object.b3_layer_zip.key
-  source_code_hash = data.archive_file.b3_layer_zip.output_base64sha256
-
-  depends_on = [aws_s3_object.b3_layer_zip]
+  s3_bucket           = aws_s3_bucket.lambda_b3_code.id
+  s3_key              = aws_s3_object.b3_layer_zip.key
+  depends_on          = [aws_s3_object.b3_layer_zip]
 }
 
 # ═══════════════════════════════════════════════════════════════
-# LAMBDA 1 — CARGA HISTÓRICA (10 anos)
+# LAMBDA 1 — CARGA HISTÓRICA
 # ═══════════════════════════════════════════════════════════════
 
 data "archive_file" "historico_zip" {
@@ -118,7 +116,7 @@ resource "aws_sqs_queue" "historico_dlq" {
 
 resource "aws_lambda_function" "b3_historico" {
   function_name    = "${var.name_prefix}-b3-historico"
-  description      = "Carga historica B3: baixa COTAHIST dos ultimos ${var.anos_historico} anos para o S3 SOR"
+  description      = "Carga historica B3: ${var.anos_historico} anos de COTAHIST"
   s3_bucket        = aws_s3_bucket.lambda_b3_code.id
   s3_key           = aws_s3_object.historico_zip.key
   source_code_hash = data.archive_file.historico_zip.output_base64sha256
@@ -127,8 +125,7 @@ resource "aws_lambda_function" "b3_historico" {
   role             = var.lambda_role_arn
   timeout          = 900
   memory_size      = 1024
-
-  layers = [aws_lambda_layer_version.b3_deps.arn]
+  layers           = [aws_lambda_layer_version.b3_deps.arn]
 
   environment {
     variables = {
@@ -140,16 +137,11 @@ resource "aws_lambda_function" "b3_historico" {
     }
   }
 
-  dead_letter_config {
-    target_arn = aws_sqs_queue.historico_dlq.arn
-  }
-
-  tracing_config { mode = "PassThrough" }
-
-  depends_on = [aws_cloudwatch_log_group.historico]
+  dead_letter_config { target_arn = aws_sqs_queue.historico_dlq.arn }
+  tracing_config    { mode = "PassThrough" }
+  depends_on        = [aws_cloudwatch_log_group.historico]
 }
 
-# Dispara a carga histórica automaticamente no primeiro apply
 resource "null_resource" "trigger_carga_historica" {
   triggers = {
     handler_hash = data.archive_file.historico_zip.output_md5
@@ -157,14 +149,14 @@ resource "null_resource" "trigger_carga_historica" {
   }
 
   provisioner "local-exec" {
-    command = <<-EOT
-      echo "Disparando carga historica B3 (${var.anos_historico} anos) em background..."
+    interpreter = ["/bin/bash", "-c"]
+    command     = <<-EOT
+      echo "Disparando carga historica B3 (${var.anos_historico} anos)..."
       aws lambda invoke \
         --function-name ${aws_lambda_function.b3_historico.function_name} \
         --invocation-type Event \
         --region ${var.aws_region} \
-        /dev/null
-      echo "Carga historica disparada. Acompanhe em CloudWatch Logs."
+        /dev/null && echo "Carga historica disparada em background."
     EOT
   }
 
@@ -172,7 +164,7 @@ resource "null_resource" "trigger_carga_historica" {
 }
 
 # ═══════════════════════════════════════════════════════════════
-# LAMBDA 2 — FECHAMENTO DIÁRIO (ano corrente)
+# LAMBDA 2 — FECHAMENTO DIÁRIO
 # ═══════════════════════════════════════════════════════════════
 
 data "archive_file" "fechamento_zip" {
@@ -201,7 +193,7 @@ resource "aws_sqs_queue" "fechamento_dlq" {
 
 resource "aws_lambda_function" "b3_fechamento_diario" {
   function_name    = "${var.name_prefix}-b3-fechamento-diario"
-  description      = "Atualizacao diaria B3: baixa COTAHIST do ano corrente apos fechamento do pregao"
+  description      = "Atualizacao diaria B3: COTAHIST do ano corrente"
   s3_bucket        = aws_s3_bucket.lambda_b3_code.id
   s3_key           = aws_s3_object.fechamento_zip.key
   source_code_hash = data.archive_file.fechamento_zip.output_base64sha256
@@ -210,8 +202,7 @@ resource "aws_lambda_function" "b3_fechamento_diario" {
   role             = var.lambda_role_arn
   timeout          = 600
   memory_size      = 512
-
-  layers = [aws_lambda_layer_version.b3_deps.arn]
+  layers           = [aws_lambda_layer_version.b3_deps.arn]
 
   environment {
     variables = {
@@ -221,18 +212,14 @@ resource "aws_lambda_function" "b3_fechamento_diario" {
     }
   }
 
-  dead_letter_config {
-    target_arn = aws_sqs_queue.fechamento_dlq.arn
-  }
-
-  tracing_config { mode = "PassThrough" }
-
-  depends_on = [aws_cloudwatch_log_group.fechamento]
+  dead_letter_config { target_arn = aws_sqs_queue.fechamento_dlq.arn }
+  tracing_config    { mode = "PassThrough" }
+  depends_on        = [aws_cloudwatch_log_group.fechamento]
 }
 
 resource "aws_cloudwatch_event_rule" "fechamento_diario" {
   name                = "${var.name_prefix}-b3-fechamento-diario"
-  description         = "Atualizacao B3 apos fechamento do pregao (19h BRT / 22h UTC)"
+  description         = "Atualizacao B3 apos fechamento (19h BRT / 22h UTC)"
   schedule_expression = "cron(0 22 ? * MON-FRI *)"
   state               = "ENABLED"
 }
@@ -251,11 +238,8 @@ resource "aws_lambda_permission" "allow_eventbridge_fechamento" {
   source_arn    = aws_cloudwatch_event_rule.fechamento_diario.arn
 }
 
-# ─── CloudWatch Alarmes ───────────────────────────────────────
-
 resource "aws_cloudwatch_metric_alarm" "historico_errors" {
   alarm_name          = "${var.name_prefix}-b3-historico-errors"
-  alarm_description   = "Lambda carga historica B3 com erros"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "Errors"
@@ -269,7 +253,6 @@ resource "aws_cloudwatch_metric_alarm" "historico_errors" {
 
 resource "aws_cloudwatch_metric_alarm" "fechamento_errors" {
   alarm_name          = "${var.name_prefix}-b3-fechamento-errors"
-  alarm_description   = "Lambda fechamento diario B3 com erros"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "Errors"
