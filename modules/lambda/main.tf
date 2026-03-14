@@ -1,20 +1,8 @@
 ###############################################################
 # Módulo Lambda - Yahoo Finance → Kinesis Data Stream
-#
-# SOLUÇÃO DEFINITIVA PARA O LAYER:
-# O terraform plan falha porque data "archive_file" é avaliado
-# antes do null_resource rodar. Para resolver, o null_resource
-# agora usa local-exec COM interpreter python3 que:
-#   1. Instala as dependências
-#   2. Cria o zip
-#   3. É invocado via terraform_data (resource de ciclo de vida)
-#      que força re-run quando requirements mudam
-#
-# O aws_s3_object usa source_hash = timestamp para forçar
-# re-upload quando o zip muda, sem depender de archive_file.
 ###############################################################
 
-# ─── Empacota handler.py (sem dependências, sem rede) ─────────
+# ─── Empacota handler.py ──────────────────────────────────────
 
 data "archive_file" "lambda_zip" {
   type        = "zip"
@@ -66,14 +54,15 @@ resource "aws_sqs_queue" "dlq" {
 
 # ─── Lambda Layer ─────────────────────────────────────────────
 #
-# O script build_layer.sh é chamado via null_resource.
-# Ele instala os pacotes E cria o zip.
-# O aws_s3_object usa content_base64 = filebase64() DEPOIS
-# do null_resource, forçando upload do zip real.
+# O null_resource instala as dependências, cria o zip E faz o
+# upload para o S3 diretamente via `aws s3 cp`.
+# Isso evita que o aws_s3_object tente abrir o zip antes
+# do null_resource terminar (problema com source + depends_on).
 
 resource "null_resource" "build_yahoo_layer" {
   triggers = {
-    req_hash = filemd5("${var.src_path}/requirements.txt")
+    req_hash   = filemd5("${var.src_path}/requirements.txt")
+    bucket     = aws_s3_bucket.lambda_code.bucket
   }
 
   provisioner "local-exec" {
@@ -82,12 +71,13 @@ resource "null_resource" "build_yahoo_layer" {
       set -e
       BUILD="${path.module}/_layer_build"
       ZIP="${path.module}/lambda_layer.zip"
+      BUCKET="${aws_s3_bucket.lambda_code.bucket}"
 
       echo ">> Limpando build anterior..."
-      rm -rf "$BUILD"
+      rm -rf "$BUILD" "$ZIP"
       mkdir -p "$BUILD/python"
 
-      echo ">> Instalando pacotes..."
+      echo ">> Instalando pacotes Yahoo Finance..."
       pip3 install \
         -r "${var.src_path}/requirements.txt" \
         -t "$BUILD/python" \
@@ -102,37 +92,28 @@ resource "null_resource" "build_yahoo_layer" {
       [ "$N" -gt 0 ] || { echo "ERRO: layer vazia!"; exit 1; }
 
       echo ">> Criando zip..."
-      rm -f "$ZIP"
       (cd "$BUILD" && zip -r "$ZIP" python/ -q)
-      echo ">> Zip: $(du -sh $ZIP | cut -f1)"
+      echo ">> Zip criado: $(du -sh $ZIP | cut -f1)"
+
+      echo ">> Fazendo upload para S3..."
+      aws s3 cp "$ZIP" "s3://$BUCKET/layer.zip"
+      echo ">> Upload concluído"
     EOT
   }
+
+  depends_on = [aws_s3_bucket.lambda_code]
 }
 
-# Sobe o zip para S3 após o build
-# Usamos aws_s3_object com source e depends_on no null_resource.
-# Para detectar mudança de conteúdo sem archive_file,
-# usamos o id do null_resource como etag (muda quando triggers mudam).
-
-resource "aws_s3_object" "layer_zip" {
-  bucket     = aws_s3_bucket.lambda_code.id
-  key        = "layer.zip"
-  source     = "${path.module}/lambda_layer.zip"
-  etag       = null_resource.build_yahoo_layer.id
-  depends_on = [null_resource.build_yahoo_layer]
-
-  lifecycle {
-    replace_triggered_by = [null_resource.build_yahoo_layer]
-  }
-}
-
+# Layer version — referencia o zip já no S3 (não precisa de source local)
 resource "aws_lambda_layer_version" "deps" {
   layer_name          = "${var.name_prefix}-yahoo-deps"
   description         = "yfinance + pandas + requests"
   compatible_runtimes = ["python3.12"]
-  s3_bucket           = aws_s3_bucket.lambda_code.id
-  s3_key              = aws_s3_object.layer_zip.key
-  depends_on          = [aws_s3_object.layer_zip]
+
+  s3_bucket = aws_s3_bucket.lambda_code.bucket
+  s3_key    = "layer.zip"
+
+  depends_on = [null_resource.build_yahoo_layer]
 }
 
 # ─── Lambda Function ──────────────────────────────────────────
@@ -166,6 +147,7 @@ resource "aws_lambda_function" "yahoo_to_kinesis" {
 
   dead_letter_config { target_arn = aws_sqs_queue.dlq.arn }
   tracing_config    { mode = "PassThrough" }
+
   depends_on = [
     aws_cloudwatch_log_group.lambda,
     aws_lambda_layer_version.deps,

@@ -24,12 +24,13 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "lambda_b3_code" {
   }
 }
 
-# ─── Lambda Layer B3 ──────────────────────────────────────────
+# ─── Layer B3 — pip + zip + upload S3 no null_resource ───────
 
 resource "null_resource" "build_b3_layer" {
   triggers = {
     req_historico  = filemd5("${var.src_historico_path}/requirements.txt")
     req_fechamento = filemd5("${var.src_fechamento_path}/requirements.txt")
+    bucket         = aws_s3_bucket.lambda_b3_code.bucket
   }
 
   provisioner "local-exec" {
@@ -38,9 +39,10 @@ resource "null_resource" "build_b3_layer" {
       set -e
       BUILD="${path.module}/_layer_b3"
       ZIP="${path.module}/b3_layer.zip"
+      BUCKET="${aws_s3_bucket.lambda_b3_code.bucket}"
 
       echo ">> Limpando build anterior..."
-      rm -rf "$BUILD"
+      rm -rf "$BUILD" "$ZIP"
       mkdir -p "$BUILD/python"
 
       echo ">> Instalando pacotes B3..."
@@ -58,32 +60,25 @@ resource "null_resource" "build_b3_layer" {
       [ "$N" -gt 0 ] || { echo "ERRO: layer vazia!"; exit 1; }
 
       echo ">> Criando zip..."
-      rm -f "$ZIP"
       (cd "$BUILD" && zip -r "$ZIP" python/ -q)
       echo ">> Zip: $(du -sh $ZIP | cut -f1)"
+
+      echo ">> Fazendo upload para S3..."
+      aws s3 cp "$ZIP" "s3://$BUCKET/b3_layer.zip"
+      echo ">> Upload concluído"
     EOT
   }
-}
 
-resource "aws_s3_object" "b3_layer_zip" {
-  bucket     = aws_s3_bucket.lambda_b3_code.id
-  key        = "b3_layer.zip"
-  source     = "${path.module}/b3_layer.zip"
-  etag       = null_resource.build_b3_layer.id
-  depends_on = [null_resource.build_b3_layer]
-
-  lifecycle {
-    replace_triggered_by = [null_resource.build_b3_layer]
-  }
+  depends_on = [aws_s3_bucket.lambda_b3_code]
 }
 
 resource "aws_lambda_layer_version" "b3_deps" {
   layer_name          = "${var.name_prefix}-b3-deps"
   description         = "requests + boto3 para ingestao B3"
   compatible_runtimes = ["python3.12"]
-  s3_bucket           = aws_s3_bucket.lambda_b3_code.id
-  s3_key              = aws_s3_object.b3_layer_zip.key
-  depends_on          = [aws_s3_object.b3_layer_zip]
+  s3_bucket           = aws_s3_bucket.lambda_b3_code.bucket
+  s3_key              = "b3_layer.zip"
+  depends_on          = [null_resource.build_b3_layer]
 }
 
 # ═══════════════════════════════════════════════════════════════
