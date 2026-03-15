@@ -80,6 +80,11 @@ jobs:
               ].join('\n')
             })
 
+      - name: Terraform Validate
+        run: |
+          terraform init
+          terraform validate
+
 ###############################################################
 # JOB 2 — Testes Python das 3 Lambdas
 ###############################################################

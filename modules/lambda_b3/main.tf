@@ -135,8 +135,8 @@ resource "aws_lambda_function" "b3_historico" {
   }
 
   dead_letter_config { target_arn = aws_sqs_queue.historico_dlq.arn }
-  tracing_config    { mode = "PassThrough" }
-  depends_on        = [aws_cloudwatch_log_group.historico]
+  tracing_config { mode = "PassThrough" }
+  depends_on = [aws_cloudwatch_log_group.historico]
 }
 
 resource "null_resource" "trigger_carga_historica" {
@@ -210,8 +210,8 @@ resource "aws_lambda_function" "b3_fechamento_diario" {
   }
 
   dead_letter_config { target_arn = aws_sqs_queue.fechamento_dlq.arn }
-  tracing_config    { mode = "PassThrough" }
-  depends_on        = [aws_cloudwatch_log_group.fechamento]
+  tracing_config { mode = "PassThrough" }
+  depends_on = [aws_cloudwatch_log_group.fechamento]
 }
 
 resource "aws_cloudwatch_event_rule" "fechamento_diario" {

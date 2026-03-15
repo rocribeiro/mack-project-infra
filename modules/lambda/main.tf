@@ -141,7 +141,7 @@ resource "aws_lambda_function" "yahoo_to_kinesis" {
   }
 
   dead_letter_config { target_arn = aws_sqs_queue.dlq.arn }
-  tracing_config    { mode = "PassThrough" }
+  tracing_config { mode = "PassThrough" }
   depends_on = [
     aws_cloudwatch_log_group.lambda,
     aws_lambda_layer_version.deps,

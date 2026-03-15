@@ -8,12 +8,12 @@
 # ---- SageMaker Notebook Instance ----
 
 resource "aws_sagemaker_notebook_instance" "main" {
-  name                    = "${var.name_prefix}-notebook"
-  role_arn                = var.sagemaker_role_arn
-  instance_type           = var.instance_type
-  volume_size             = 20 # GB
-  direct_internet_access  = "Enabled"
-  root_access             = "Enabled"
+  name                   = "${var.name_prefix}-notebook"
+  role_arn               = var.sagemaker_role_arn
+  instance_type          = var.instance_type
+  volume_size            = 20 # GB
+  direct_internet_access = "Enabled"
+  root_access            = "Enabled"
 
   default_code_repository = null
 
