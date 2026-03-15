@@ -156,3 +156,15 @@ module "lambda_b3" {
   anos_historico      = var.anos_historico
   aws_region          = var.aws_region
 }
+
+
+
+# Banco relacional
+
+module "rds" {
+  source = "./modules/rds"
+
+  # Passando as variáveis da rede para o banco de dados
+  vpc_id               = module.vpc.vpc_id
+  db_subnet_group_name = module.vpc.database_subnet_group_name
+}

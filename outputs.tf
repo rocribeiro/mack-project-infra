@@ -94,3 +94,8 @@ output "lambda_b3_fechamento_function_name" {
 output "lambda_b3_fechamento_log_group" {
   value = module.lambda_b3.fechamento_log_group
 }
+
+# ── Banco relacional RDS ───────────────────────────────
+output "endereco_do_banco_spec" {
+  value = module.rds.db_endpoint
+}
