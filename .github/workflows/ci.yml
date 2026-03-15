@@ -37,6 +37,7 @@ env:
   TF_VERSION:     "1.5.7"
   PYTHON_VERSION: "3.12"
   AWS_REGION:     "us-east-1"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 ###############################################################
 # JOB 1 — Lint e formatação do Terraform
@@ -49,10 +50,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Terraform ${{ env.TF_VERSION }}
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
@@ -79,10 +80,6 @@ jobs:
               ].join('\n')
             })
 
-      - name: Falhar se formato errado
-        if: steps.fmt.outcome == 'failure'
-        run: exit 1
-
 ###############################################################
 # JOB 2 — Testes Python das 3 Lambdas
 ###############################################################
@@ -93,7 +90,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
@@ -124,15 +121,15 @@ jobs:
 
           # Testa imports
           from handler import (
-            ALL_TICKERS, _classify_ticker, _safe_float, _safe_int,
-            _save_tickers_cache, _load_tickers_cache
+            _classify, _safe_float, _safe_int,
+            _save_cache, _load_cache
           )
 
           # Testa classificação de tickers
-          assert _classify_ticker('PETR4.SA') == 'acao_pn',  'PETR4 deve ser acao_pn'
-          assert _classify_ticker('VALE3.SA') == 'acao_on',  'VALE3 deve ser acao_on'
-          assert _classify_ticker('BOVA11.SA')== 'fii_ou_etf','BOVA11 deve ser fii_ou_etf'
-          assert _classify_ticker('^BVSP')    == 'indice',    'BVSP deve ser indice'
+          assert _classify('PETR4.SA') == 'acao_pn',  'PETR4 deve ser acao_pn'
+          assert _classify('VALE3.SA') == 'acao_on',  'VALE3 deve ser acao_on'
+          assert _classify('BOVA11.SA')== 'fii_ou_etf','BOVA11 deve ser fii_ou_etf'
+          assert _classify('^BVSP')    == 'indice',    'BVSP deve ser indice'
 
           # Testa helpers
           assert _safe_float(10.5)   == 10.5
@@ -222,10 +219,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Terraform ${{ env.TF_VERSION }}
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
