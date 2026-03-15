@@ -233,7 +233,6 @@ jobs:
       # No Academy: atualize os secrets antes de rodar o workflow_dispatch
       - name: Configure AWS Credentials (se disponível)
         id: aws-auth
-        if: ${{ secrets.AWS_ACCESS_KEY_ID != '' && secrets.AWS_SECRET_ACCESS_KEY != '' && secrets.AWS_SESSION_TOKEN != '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
