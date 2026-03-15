@@ -26,7 +26,7 @@ resource "aws_security_group" "rds_sg" {
 resource "aws_db_instance" "spec_db" {
   identifier             = "b3-datalake-dev-spec-2810"
   engine                 = "postgres"
-  engine_version         = "15.4"
+  engine_version         = "15"
   instance_class         = "db.t3.micro" # Máquina do nível gratuito (Free Tier)
   allocated_storage      = 20            # 20 GB de espaço (Suficiente para o projeto)
   
