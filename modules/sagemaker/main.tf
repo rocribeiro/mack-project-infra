@@ -8,12 +8,12 @@
 # ---- SageMaker Notebook Instance ----
 
 resource "aws_sagemaker_notebook_instance" "main" {
-  name                    = "${var.name_prefix}-notebook"
-  role_arn                = var.sagemaker_role_arn
-  instance_type           = var.instance_type
-  volume_size             = 20 # GB
-  direct_internet_access  = "Enabled"
-  root_access             = "Enabled"
+  name                   = "${var.name_prefix}-notebook"
+  role_arn               = var.sagemaker_role_arn
+  instance_type          = var.instance_type
+  volume_size            = 20 # GB
+  direct_internet_access = "Enabled"
+  root_access            = "Enabled"
 
   default_code_repository = null
 
@@ -30,14 +30,15 @@ resource "aws_sagemaker_notebook_instance" "main" {
 resource "aws_sagemaker_notebook_instance_lifecycle_configuration" "main" {
   name = "${var.name_prefix}-lifecycle"
 
-  # Script executado ao iniciar o notebook (instala libs)
-  on_start = base64encode(<<-EOF
+  # on_create roda apenas uma vez na criação do notebook (mais rápido que on_start)
+  # Instala as libs em background para não estourar o timeout de 5min do lifecycle
+  on_create = base64encode(<<-EOF
     #!/bin/bash
-    set -e
-    sudo -u ec2-user -i <<'SCRIPT'
-    source activate python3
-    pip install yfinance pandas-ta scikit-learn xgboost shap boto3 awswrangler plotly
-    SCRIPT
+    (
+      source activate python3
+      pip install --quiet yfinance pandas-ta scikit-learn xgboost shap boto3 awswrangler plotly
+    ) &
+    exit 0
   EOF
   )
 }

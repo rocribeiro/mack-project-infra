@@ -69,14 +69,14 @@ resource "aws_glue_crawler" "gold" {
 # Limpeza, padronização e tratamento dos dados B3
 
 resource "aws_glue_job" "bronze_to_silver" {
-  name         = "${var.name_prefix}-bronze-to-silver"
-  role_arn     = var.glue_role_arn
-  description  = "ETL: dados brutos B3 (Bronze/SOR) → dados tratados (Silver/SOT)"
-  glue_version = "4.0"
-  worker_type  = var.glue_worker_type
+  name              = "${var.name_prefix}-bronze-to-silver"
+  role_arn          = var.glue_role_arn
+  description       = "ETL: dados brutos B3 (Bronze/SOR) → dados tratados (Silver/SOT)"
+  glue_version      = "4.0"
+  worker_type       = var.glue_worker_type
   number_of_workers = var.glue_number_of_workers
-  max_retries  = var.glue_max_retries
-  timeout      = 60 # minutos
+  max_retries       = var.glue_max_retries
+  timeout           = 60 # minutos
 
   command {
     name            = "glueetl"
@@ -106,14 +106,14 @@ resource "aws_glue_job" "bronze_to_silver" {
 # Agregações, indicadores, features para ML
 
 resource "aws_glue_job" "silver_to_gold" {
-  name         = "${var.name_prefix}-silver-to-gold"
-  role_arn     = var.glue_role_arn
-  description  = "ETL: dados tratados (Silver/SOT) → dados analíticos e features (Gold/SPEC)"
-  glue_version = "4.0"
-  worker_type  = var.glue_worker_type
+  name              = "${var.name_prefix}-silver-to-gold"
+  role_arn          = var.glue_role_arn
+  description       = "ETL: dados tratados (Silver/SOT) → dados analíticos e features (Gold/SPEC)"
+  glue_version      = "4.0"
+  worker_type       = var.glue_worker_type
   number_of_workers = var.glue_number_of_workers
-  max_retries  = var.glue_max_retries
-  timeout      = 90 # minutos
+  max_retries       = var.glue_max_retries
+  timeout           = 90 # minutos
 
   command {
     name            = "glueetl"
@@ -149,6 +149,7 @@ resource "aws_glue_trigger" "start_crawl_bronze" {
   type          = "SCHEDULED"
   schedule      = "cron(0 5 * * ? *)"
   workflow_name = aws_glue_workflow.pipeline.name
+  enabled       = true
 
   actions {
     crawler_name = aws_glue_crawler.bronze.name
@@ -159,6 +160,7 @@ resource "aws_glue_trigger" "bronze_to_silver_trigger" {
   name          = "${var.name_prefix}-trigger-bronze-silver"
   type          = "CONDITIONAL"
   workflow_name = aws_glue_workflow.pipeline.name
+  enabled       = true
 
   predicate {
     conditions {
@@ -176,6 +178,7 @@ resource "aws_glue_trigger" "silver_to_gold_trigger" {
   name          = "${var.name_prefix}-trigger-silver-gold"
   type          = "CONDITIONAL"
   workflow_name = aws_glue_workflow.pipeline.name
+  enabled       = true
 
   predicate {
     conditions {
@@ -198,9 +201,9 @@ resource "aws_glue_catalog_table" "b3_series_historicas" {
   table_type    = "EXTERNAL_TABLE"
 
   parameters = {
-    "classification"      = "csv"
+    "classification"         = "csv"
     "skip.header.line.count" = "1"
-    "delimiter"           = ";"
+    "delimiter"              = ";"
   }
 
   storage_descriptor {

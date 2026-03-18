@@ -28,17 +28,17 @@ resource "aws_athena_workgroup" "main" {
 # ---- Athena Database (referencia o Glue Catalog) ----
 
 resource "aws_athena_database" "b3" {
-  name   = replace("${var.name_prefix}_athena", "-", "_")
-  bucket = var.s3_results_bucket
+  name    = replace("${var.name_prefix}_athena", "-", "_")
+  bucket  = var.s3_results_bucket
   comment = "Database Athena para análises B3"
 }
 
 # ---- Queries Salvas ----
 
 resource "aws_athena_named_query" "acoes_por_ticker" {
-  name      = "${var.name_prefix}-acoes-por-ticker"
-  workgroup = aws_athena_workgroup.main.id
-  database  = var.glue_database_name
+  name        = "${var.name_prefix}-acoes-por-ticker"
+  workgroup   = aws_athena_workgroup.main.id
+  database    = var.glue_database_name
   description = "Retorna preços históricos de um ativo específico"
 
   query = <<-EOT
@@ -61,9 +61,9 @@ resource "aws_athena_named_query" "acoes_por_ticker" {
 }
 
 resource "aws_athena_named_query" "top_volume_dia" {
-  name      = "${var.name_prefix}-top-volume-dia"
-  workgroup = aws_athena_workgroup.main.id
-  database  = var.glue_database_name
+  name        = "${var.name_prefix}-top-volume-dia"
+  workgroup   = aws_athena_workgroup.main.id
+  database    = var.glue_database_name
   description = "Top 20 ativos por volume em um pregão"
 
   query = <<-EOT
@@ -83,9 +83,9 @@ resource "aws_athena_named_query" "top_volume_dia" {
 }
 
 resource "aws_athena_named_query" "retorno_carteira" {
-  name      = "${var.name_prefix}-retorno-carteira"
-  workgroup = aws_athena_workgroup.main.id
-  database  = var.glue_database_name
+  name        = "${var.name_prefix}-retorno-carteira"
+  workgroup   = aws_athena_workgroup.main.id
+  database    = var.glue_database_name
   description = "Calcula retorno de uma carteira de ativos"
 
   query = <<-EOT
@@ -109,9 +109,9 @@ resource "aws_athena_named_query" "retorno_carteira" {
 }
 
 resource "aws_athena_named_query" "volatilidade_ativos" {
-  name      = "${var.name_prefix}-volatilidade-ativos"
-  workgroup = aws_athena_workgroup.main.id
-  database  = var.glue_database_name
+  name        = "${var.name_prefix}-volatilidade-ativos"
+  workgroup   = aws_athena_workgroup.main.id
+  database    = var.glue_database_name
   description = "Calcula volatilidade histórica dos ativos (base para classificação de risco)"
 
   query = <<-EOT
