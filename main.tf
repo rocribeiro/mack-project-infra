@@ -99,9 +99,9 @@ module "athena" {
   name_prefix        = local.name_prefix
   environment        = var.environment
   s3_results_bucket  = module.s3.bucket_athena_results_name
-  glue_database_name = module.glue.database_name
+  # Trocamos o nome da variável velha pela nova do SPEC:
+  glue_database_name = module.glue.database_name_spec 
 }
-
 ###############################################################
 # SAGEMAKER - Modelagem preditiva
 ###############################################################

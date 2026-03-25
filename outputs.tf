@@ -33,8 +33,11 @@ output "s3_bucket_athena_results" {
 }
 
 # ── Glue ──────────────────────────────────────────────────────
-output "glue_database_name" {
-  value = module.glue.database_name
+output "glue_database_name_sot" {
+  value       = module.glue.database_name_sot
+}
+output "glue_database_name_spec" {
+  value       = module.glue.database_name_spec
 }
 output "glue_workflow_name" {
   value = module.glue.workflow_name
