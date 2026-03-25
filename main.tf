@@ -68,7 +68,8 @@ module "glue" {
   s3_bucket_spec         = module.s3.bucket_spec_name
   s3_scripts_bucket      = module.s3.bucket_scripts_name
   glue_worker_type       = var.glue_worker_type
-  glue_number_of_workers = var.glue_number_of_workers
+  glue_number_of_workers_silver = var.glue_number_of_workers_silver
+  glue_number_of_workers_gold = var.glue_number_of_workers_gold
   glue_max_retries       = var.glue_max_retries
 }
 

@@ -20,7 +20,8 @@ kinesis_firehose_buffer_interval_sec = 300
 
 # Glue
 glue_worker_type       = "G.1X"
-glue_number_of_workers = 2
+glue_number_of_workers_silver = 2
+glue_number_of_workers_gold = 10
 glue_max_retries       = 1
 
 # SageMaker
