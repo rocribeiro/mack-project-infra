@@ -3,7 +3,7 @@
 ###############################################################
 
 resource "aws_s3_bucket" "lambda_b3_code" {
-  bucket        = "${var.name_prefix}-lambda-b3-code"
+  bucket        = "${var.name_prefix}-lambda-b3-code-3019"
   force_destroy = true
 }
 

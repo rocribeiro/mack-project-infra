@@ -10,7 +10,7 @@ data "archive_file" "lambda_zip" {
 }
 
 resource "aws_s3_bucket" "lambda_code" {
-  bucket        = "${var.name_prefix}-lambda-code"
+  bucket        = "${var.name_prefix}-lambda-code-3019"
   force_destroy = true
 }
 

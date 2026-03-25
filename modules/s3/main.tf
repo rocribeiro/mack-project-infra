@@ -6,7 +6,7 @@
 # ---- Bucket Bronze - SOR (System of Record) - Dados Brutos ----
 
 resource "aws_s3_bucket" "sor" {
-  bucket        = "${var.name_prefix}-sor"
+  bucket        = "${var.name_prefix}-sor-3019"
   force_destroy = var.environment == "dev" ? true : false
 }
 
@@ -73,7 +73,7 @@ resource "aws_s3_object" "sor_clusters_brasil" {
 # ---- Bucket Silver - SOT (Source of Truth) - Dados Tratados ----
 
 resource "aws_s3_bucket" "sot" {
-  bucket        = "${var.name_prefix}-sot"
+  bucket        = "${var.name_prefix}-sot-3019"
   force_destroy = var.environment == "dev" ? true : false
 }
 
@@ -139,7 +139,7 @@ resource "aws_s3_object" "sot_clusters_brasil" {
 # ---- Bucket Gold - SPEC (Single Point of Entry for Consumers) ----
 
 resource "aws_s3_bucket" "spec" {
-  bucket        = "${var.name_prefix}-spec"
+  bucket        = "${var.name_prefix}-spec-3019"
   force_destroy = var.environment == "dev" ? true : false
 }
 
@@ -199,7 +199,7 @@ resource "aws_s3_object" "spec_cotacoes_live" {
 # ---- Bucket para Scripts Glue ----
 
 resource "aws_s3_bucket" "scripts" {
-  bucket        = "${var.name_prefix}-glue-scripts"
+  bucket        = "${var.name_prefix}-glue-scripts-3019"
   force_destroy = var.environment == "dev" ? true : false
 }
 
@@ -223,7 +223,7 @@ resource "aws_s3_bucket_public_access_block" "scripts" {
 # ---- Bucket para Resultados Athena ----
 
 resource "aws_s3_bucket" "athena_results" {
-  bucket        = "${var.name_prefix}-athena-results"
+  bucket        = "${var.name_prefix}-athena-results-3019"
   force_destroy = var.environment == "dev" ? true : false
 }
 
@@ -257,7 +257,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "athena_results" {
 # ---- Bucket para SageMaker ----
 
 resource "aws_s3_bucket" "sagemaker" {
-  bucket        = "${var.name_prefix}-sagemaker"
+  bucket        = "${var.name_prefix}-sagemaker-3019"
   force_destroy = var.environment == "dev" ? true : false
 }
 
