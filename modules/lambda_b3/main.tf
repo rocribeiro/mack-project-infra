@@ -121,15 +121,21 @@ resource "aws_lambda_function" "b3_historico" {
   runtime          = "python3.12"
   role             = var.lambda_role_arn
   timeout          = 900
-  memory_size      = 1024
+  memory_size      = 512  # Reduzido: novo handler não carrega TXT na RAM
   layers           = [aws_lambda_layer_version.b3_deps.arn]
+
+  # 2GB de /tmp: cada ano ocupa ~600MB (ZIP + TXT durante extração).
+  # Com MAX_WORKERS=2, pico de uso é ~1.2GB → seguro com 2048MB.
+  ephemeral_storage {
+    size = 2048
+  }
 
   environment {
     variables = {
       S3_BUCKET_SOR  = var.s3_bucket_sor_name
       S3_PREFIX      = "b3-series-historicas"
       ANOS_HISTORICO = tostring(var.anos_historico)
-      MAX_WORKERS    = "4"
+      MAX_WORKERS    = "2"   # Reduzido: >2 workers esgotaria /tmp em paralelo
       FORCE_DOWNLOAD = "false"
     }
   }
@@ -200,6 +206,11 @@ resource "aws_lambda_function" "b3_fechamento_diario" {
   timeout          = 600
   memory_size      = 512
   layers           = [aws_lambda_layer_version.b3_deps.arn]
+
+  # 1GB de /tmp: fechamento processa apenas 1 ano por vez (~600MB)
+  ephemeral_storage {
+    size = 1024
+  }
 
   environment {
     variables = {

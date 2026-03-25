@@ -58,6 +58,12 @@ resource "aws_s3_object" "sor_cotacoes_live" {
   content = ""
 }
 
+resource "aws_s3_object" "sor_b3_dimensoes" {
+  bucket  = aws_s3_bucket.sor.id
+  key     = "b3-dimensoes/"
+  content = ""
+}
+
 # ---- Bucket Silver - SOT (Source of Truth) - Dados Tratados ----
 
 resource "aws_s3_bucket" "sot" {
@@ -113,6 +119,12 @@ resource "aws_s3_object" "sot_indices" {
   content = ""
 }
 
+resource "aws_s3_object" "sot_b3_dimensoes" {
+  bucket  = aws_s3_bucket.sot.id
+  key     = "b3-dimensoes/"
+  content = ""
+}
+
 # ---- Bucket Gold - SPEC (Single Point of Entry for Consumers) ----
 
 resource "aws_s3_bucket" "spec" {
@@ -158,6 +170,12 @@ resource "aws_s3_object" "spec_recomendacoes" {
 resource "aws_s3_object" "spec_ml_features" {
   bucket  = aws_s3_bucket.spec.id
   key     = "ml-features/"
+  content = ""
+}
+
+resource "aws_s3_object" "spec_b3_dimensoes" {
+  bucket  = aws_s3_bucket.spec.id
+  key     = "b3-dimensoes/"
   content = ""
 }
 

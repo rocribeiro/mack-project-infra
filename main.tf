@@ -156,3 +156,40 @@ module "lambda_b3" {
   anos_historico      = var.anos_historico
   aws_region          = var.aws_region
 }
+
+# Banco relacional
+
+# module "rds" {
+#   source = "./modules/rds"
+
+#   # Passando as variáveis da rede para o banco de dados
+#   vpc_id               = module.vpc.vpc_id
+#   db_subnet_group_name = module.vpc.database_subnet_group_name
+# }
+
+# 1. Pede para a AWS a VPC Padrão da conta
+data "aws_vpc" "default" {
+  default = true
+}
+
+# 2. Pede para a AWS as Subnets (redes menores) dentro dessa VPC Padrão
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
+
+# 3. Cria o Grupo de Subnets que o RDS exige
+resource "aws_db_subnet_group" "default" {
+  name       = "b3-datalake-dev-subnet-group"
+  subnet_ids = data.aws_subnets.default.ids
+}
+
+# 4. Agora sim, chama o módulo do Banco de Dados passando os dados corretos!
+module "rds" {
+  source = "./modules/rds"
+
+  vpc_id               = data.aws_vpc.default.id
+  db_subnet_group_name = aws_db_subnet_group.default.name
+}
