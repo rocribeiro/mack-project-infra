@@ -64,6 +64,12 @@ resource "aws_s3_object" "sor_b3_dimensoes" {
   content = ""
 }
 
+resource "aws_s3_object" "clusters_brasil" {
+  bucket  = aws_s3_bucket.sor.id
+  key     = "clusters_brasil/"
+  content = ""
+}
+
 # ---- Bucket Silver - SOT (Source of Truth) - Dados Tratados ----
 
 resource "aws_s3_bucket" "sot" {
@@ -109,13 +115,13 @@ resource "aws_s3_bucket_lifecycle_configuration" "sot" {
 # Estrutura de pastas SOT
 resource "aws_s3_object" "sot_acoes" {
   bucket  = aws_s3_bucket.sot.id
-  key     = "acoes/"
+  key     = "b3-series/"
   content = ""
 }
 
 resource "aws_s3_object" "sot_indices" {
   bucket  = aws_s3_bucket.sot.id
-  key     = "indices/"
+  key     = "cotacoes-live/"
   content = ""
 }
 
@@ -125,6 +131,11 @@ resource "aws_s3_object" "sot_b3_dimensoes" {
   content = ""
 }
 
+resource "aws_s3_object" "clusters_brasil" {
+  bucket  = aws_s3_bucket.sot.id
+  key     = "clusters_brasil/"
+  content = ""
+}
 # ---- Bucket Gold - SPEC (Single Point of Entry for Consumers) ----
 
 resource "aws_s3_bucket" "spec" {
@@ -167,15 +178,21 @@ resource "aws_s3_object" "spec_recomendacoes" {
   content = ""
 }
 
-resource "aws_s3_object" "spec_ml_features" {
+resource "aws_s3_object" "datamart_ml" {
   bucket  = aws_s3_bucket.spec.id
-  key     = "ml-features/"
+  key     = "datamart_ml/"
   content = ""
 }
 
 resource "aws_s3_object" "spec_b3_dimensoes" {
   bucket  = aws_s3_bucket.spec.id
   key     = "b3-dimensoes/"
+  content = ""
+}
+
+resource "aws_s3_object" "spec_cotacoes_live" {
+  bucket  = aws_s3_bucket.spec.id
+  key     = "cotacoes-live/"
   content = ""
 }
 
