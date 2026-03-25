@@ -2,7 +2,7 @@
 
 # 1. Grupo de Segurança (Firewall) para permitir a conexão no banco
 resource "aws_security_group" "rds_sg" {
-  name        = "b3-datalake-dev-rds-sg-2810"
+  name        = "b3-datalake-dev-rds-sg"
   description = "Permite acesso ao PostgreSQL da camada SPEC"
   vpc_id      = var.vpc_id
 
@@ -24,7 +24,7 @@ resource "aws_security_group" "rds_sg" {
 
 # 2. A Instância do Banco de Dados (PostgreSQL)
 resource "aws_db_instance" "spec_db" {
-  identifier             = "b3-datalake-dev-spec-2810"
+  identifier             = "b3-datalake-dev-spec"
   engine                 = "postgres"
   engine_version         = "15"
   instance_class         = "db.t3.micro" # Máquina do nível gratuito (Free Tier)
@@ -32,7 +32,7 @@ resource "aws_db_instance" "spec_db" {
   
   db_name                = "b3_spec"
   username               = "admin_mack"
-  password               = "SenhaSuperSegura123!" # Vocês podem mudar depois
+  password               = "CaioJonasJulioRodrigo" 
   
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
   db_subnet_group_name   = var.db_subnet_group_name

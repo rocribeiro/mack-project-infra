@@ -5,42 +5,47 @@
 
 # ---- Glue Data Catalog Database ----
 
-resource "aws_glue_catalog_database" "main" {
-  name        = replace("${var.name_prefix}_catalog", "-", "_")
-  description = "Catálogo de dados B3 - Séries Históricas e Cotações"
+resource "aws_glue_catalog_database" "sot" {
+  name        = replace("${var.name_prefix}_sot", "-", "_")
+  description = "Catálogo de dados SOT"
+}
+
+resource "aws_glue_catalog_database" "spec" {
+  name        = replace("${var.name_prefix}_spec", "-", "_")
+  description = "Catálogo de dados SPEC"
 }
 
 # ---- Crawlers para catalogar os dados ----
 
-resource "aws_glue_crawler" "bronze" {
-  database_name = aws_glue_catalog_database.main.name
-  name          = "${var.name_prefix}-crawler-bronze"
-  role          = var.glue_role_arn
-  description   = "Crawler para camada Bronze (SOR) - dados brutos B3"
+# resource "aws_glue_crawler" "bronze" {
+#   database_name = aws_glue_catalog_database.main.name
+#   name          = "${var.name_prefix}-crawler-bronze"
+#   role          = var.glue_role_arn
+#   description   = "Crawler para camada Bronze (SOR) - dados brutos B3"
 
-  s3_target {
-    path = "s3://${var.s3_bucket_sor}/b3-series-historicas/"
-  }
+#   s3_target {
+#     path = "s3://${var.s3_bucket_sor}/b3-series-historicas/"
+#   }
 
-  s3_target {
-    path = "s3://${var.s3_bucket_sor}/cotacoes-live/"
-  }
+#   s3_target {
+#     path = "s3://${var.s3_bucket_sor}/cotacoes-live/"
+#   }
 
-  schedule = "cron(0 6 * * ? *)" # Executa diariamente às 6h UTC
+#   schedule = "cron(0 6 * * ? *)" # Executa diariamente às 6h UTC
 
-  configuration = jsonencode({
-    Version = 1.0
-    CrawlerOutput = {
-      Partitions = { AddOrUpdateBehavior = "InheritFromTable" }
-    }
-    Grouping = {
-      TableGroupingPolicy = "CombineCompatibleSchemas"
-    }
-  })
-}
+#   configuration = jsonencode({
+#     Version = 1.0
+#     CrawlerOutput = {
+#       Partitions = { AddOrUpdateBehavior = "InheritFromTable" }
+#     }
+#     Grouping = {
+#       TableGroupingPolicy = "CombineCompatibleSchemas"
+#     }
+#   })
+# }
 
 resource "aws_glue_crawler" "silver" {
-  database_name = aws_glue_catalog_database.main.name
+  database_name = aws_glue_catalog_database.sot.name
   name          = "${var.name_prefix}-crawler-silver"
   role          = var.glue_role_arn
   description   = "Crawler para camada Silver (SOT) - dados tratados"
@@ -53,7 +58,7 @@ resource "aws_glue_crawler" "silver" {
 }
 
 resource "aws_glue_crawler" "gold" {
-  database_name = aws_glue_catalog_database.main.name
+  database_name = aws_glue_catalog_database.spec.name
   name          = "${var.name_prefix}-crawler-gold"
   role          = var.glue_role_arn
   description   = "Crawler para camada Gold (SPEC) - dados analíticos"
@@ -74,7 +79,7 @@ resource "aws_glue_job" "bronze_to_silver" {
   description       = "ETL: dados brutos B3 (Bronze/SOR) → dados tratados (Silver/SOT)"
   glue_version      = "4.0"
   worker_type       = var.glue_worker_type
-  number_of_workers = var.glue_number_of_workers
+  number_of_workers = var.glue_number_of_workers_silver
   max_retries       = var.glue_max_retries
   timeout           = 60 # minutos
 
@@ -111,7 +116,7 @@ resource "aws_glue_job" "silver_to_gold" {
   description       = "ETL: dados tratados (Silver/SOT) → dados analíticos e features (Gold/SPEC)"
   glue_version      = "4.0"
   worker_type       = var.glue_worker_type
-  number_of_workers = var.glue_number_of_workers
+  number_of_workers = var.glue_number_of_workers_gold
   max_retries       = var.glue_max_retries
   timeout           = 90 # minutos
 

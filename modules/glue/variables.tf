@@ -31,9 +31,14 @@ variable "glue_worker_type" {
   default = "G.1X"
 }
 
-variable "glue_number_of_workers" {
+variable "glue_number_of_workers_silver" {
   type    = number
   default = 2
+}
+
+variable "glue_number_of_workers_gold" {
+  type    = number
+  default = 10
 }
 
 variable "glue_max_retries" {
