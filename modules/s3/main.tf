@@ -64,7 +64,7 @@ resource "aws_s3_object" "sor_b3_dimensoes" {
   content = ""
 }
 
-resource "aws_s3_object" "clusters_brasil" {
+resource "aws_s3_object" "sor_clusters_brasil" {
   bucket  = aws_s3_bucket.sor.id
   key     = "clusters_brasil/"
   content = ""
@@ -131,7 +131,7 @@ resource "aws_s3_object" "sot_b3_dimensoes" {
   content = ""
 }
 
-resource "aws_s3_object" "clusters_brasil" {
+resource "aws_s3_object" "sot_clusters_brasil" {
   bucket  = aws_s3_bucket.sot.id
   key     = "clusters_brasil/"
   content = ""
