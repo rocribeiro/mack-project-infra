@@ -149,35 +149,35 @@ resource "aws_glue_workflow" "pipeline" {
   description = "Pipeline completo: Ingestão → Bronze → Silver → Gold"
 }
 
-resource "aws_glue_trigger" "start_crawl_bronze" {
-  name          = "${var.name_prefix}-trigger-crawl-bronze"
-  type          = "SCHEDULED"
-  schedule      = "cron(0 5 * * ? *)"
-  workflow_name = aws_glue_workflow.pipeline.name
-  enabled       = true
+# resource "aws_glue_trigger" "start_crawl_bronze" {
+#   name          = "${var.name_prefix}-trigger-crawl-bronze"
+#   type          = "SCHEDULED"
+#   schedule      = "cron(0 5 * * ? *)"
+#   workflow_name = aws_glue_workflow.pipeline.name
+#   enabled       = true
 
-  actions {
-    crawler_name = aws_glue_crawler.bronze.name
-  }
-}
+  # actions {
+  #   crawler_name = aws_glue_crawler.bronze.name
+  # }
+# }
 
-resource "aws_glue_trigger" "bronze_to_silver_trigger" {
-  name          = "${var.name_prefix}-trigger-bronze-silver"
-  type          = "CONDITIONAL"
-  workflow_name = aws_glue_workflow.pipeline.name
-  enabled       = true
+# resource "aws_glue_trigger" "bronze_to_silver_trigger" {
+#   name          = "${var.name_prefix}-trigger-bronze-silver"
+#   type          = "CONDITIONAL"
+#   workflow_name = aws_glue_workflow.pipeline.name
+#   enabled       = true
 
-  predicate {
-    conditions {
-      crawler_name = aws_glue_crawler.bronze.name
-      crawl_state  = "SUCCEEDED"
-    }
-  }
+#   predicate {
+#     conditions {
+#       crawler_name = aws_glue_crawler.bronze.name
+#       crawl_state  = "SUCCEEDED"
+#     }
+#   }
 
-  actions {
-    job_name = aws_glue_job.bronze_to_silver.name
-  }
-}
+#   actions {
+#     job_name = aws_glue_job.bronze_to_silver.name
+#   }
+# }
 
 resource "aws_glue_trigger" "silver_to_gold_trigger" {
   name          = "${var.name_prefix}-trigger-silver-gold"
