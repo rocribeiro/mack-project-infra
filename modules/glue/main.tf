@@ -98,7 +98,7 @@ resource "aws_glue_job" "bronze_to_silver" {
     "--spark-event-logs-path"            = "s3://${var.s3_scripts_bucket}/spark-logs/"
     "--SOURCE_BUCKET"                    = var.s3_bucket_sor
     "--TARGET_BUCKET"                    = var.s3_bucket_sot
-    "--DATABASE_NAME"                    = aws_glue_catalog_database.main.name
+    "--DATABASE_NAME"                    = aws_glue_catalog_database.sot.name
     "--TempDir"                          = "s3://${var.s3_scripts_bucket}/temp/"
   }
 
@@ -133,7 +133,7 @@ resource "aws_glue_job" "silver_to_gold" {
     "--enable-continuous-cloudwatch-log" = "true"
     "--SOURCE_BUCKET"                    = var.s3_bucket_sot
     "--TARGET_BUCKET"                    = var.s3_bucket_spec
-    "--DATABASE_NAME"                    = aws_glue_catalog_database.main.name
+    "--DATABASE_NAME"                    = aws_glue_catalog_database.spec.name
     "--TempDir"                          = "s3://${var.s3_scripts_bucket}/temp/"
   }
 
@@ -197,137 +197,137 @@ resource "aws_glue_trigger" "silver_to_gold_trigger" {
   }
 }
 
-# ---- Tabelas no Glue Catalog para dados B3 ----
+# # ---- Tabelas no Glue Catalog para dados B3 ----
 
-resource "aws_glue_catalog_table" "b3_series_historicas" {
-  name          = "b3_series_historicas_bronze"
-  database_name = aws_glue_catalog_database.main.name
-  description   = "Séries históricas B3 - Camada Bronze (SOR)"
-  table_type    = "EXTERNAL_TABLE"
+# resource "aws_glue_catalog_table" "b3_series_historicas" {
+#   name          = "b3_series_historicas_bronze"
+#   database_name = aws_glue_catalog_database.main.name
+#   description   = "Séries históricas B3 - Camada Bronze (SOR)"
+#   table_type    = "EXTERNAL_TABLE"
 
-  parameters = {
-    "classification"         = "csv"
-    "skip.header.line.count" = "1"
-    "delimiter"              = ";"
-  }
+#   parameters = {
+#     "classification"         = "csv"
+#     "skip.header.line.count" = "1"
+#     "delimiter"              = ";"
+#   }
 
-  storage_descriptor {
-    location      = "s3://${var.s3_bucket_sor}/b3-series-historicas/"
-    input_format  = "org.apache.hadoop.mapred.TextInputFormat"
-    output_format = "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
+#   storage_descriptor {
+#     location      = "s3://${var.s3_bucket_sor}/b3-series-historicas/"
+#     input_format  = "org.apache.hadoop.mapred.TextInputFormat"
+#     output_format = "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
 
-    ser_de_info {
-      serialization_library = "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
-      parameters = {
-        "field.delim" = ";"
-      }
-    }
+#     ser_de_info {
+#       serialization_library = "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+#       parameters = {
+#         "field.delim" = ";"
+#       }
+#     }
 
-    # Campos do layout B3 (série histórica)
-    columns {
-      name    = "tipo_registro"
-      type    = "string"
-      comment = "Tipo de registro (01=cabeçalho, 02=detalhe, 99=trailer)"
-    }
-    columns {
-      name    = "datpre"
-      type    = "string"
-      comment = "Data do pregão (YYYYMMDD)"
-    }
-    columns {
-      name    = "codbdi"
-      type    = "string"
-      comment = "Código BDI"
-    }
-    columns {
-      name    = "codneg"
-      type    = "string"
-      comment = "Código de negociação (ticker)"
-    }
-    columns {
-      name    = "tpmerc"
-      type    = "string"
-      comment = "Tipo de mercado"
-    }
-    columns {
-      name    = "nomres"
-      type    = "string"
-      comment = "Nome resumido da empresa"
-    }
-    columns {
-      name    = "especi"
-      type    = "string"
-      comment = "Especificação do papel"
-    }
-    columns {
-      name    = "prazot"
-      type    = "string"
-      comment = "Prazo em dias do mercado a termo"
-    }
-    columns {
-      name    = "modref"
-      type    = "string"
-      comment = "Moeda de referência"
-    }
-    columns {
-      name    = "preabe"
-      type    = "double"
-      comment = "Preço de abertura"
-    }
-    columns {
-      name    = "premax"
-      type    = "double"
-      comment = "Preço máximo"
-    }
-    columns {
-      name    = "premin"
-      type    = "double"
-      comment = "Preço mínimo"
-    }
-    columns {
-      name    = "premed"
-      type    = "double"
-      comment = "Preço médio"
-    }
-    columns {
-      name    = "preult"
-      type    = "double"
-      comment = "Preço de fechamento"
-    }
-    columns {
-      name    = "preofc"
-      type    = "double"
-      comment = "Preço da melhor oferta de compra"
-    }
-    columns {
-      name    = "preofv"
-      type    = "double"
-      comment = "Preço da melhor oferta de venda"
-    }
-    columns {
-      name    = "totneg"
-      type    = "bigint"
-      comment = "Total de negócios efetuados"
-    }
-    columns {
-      name    = "quatot"
-      type    = "bigint"
-      comment = "Quantidade total de títulos negociados"
-    }
-    columns {
-      name    = "voltot"
-      type    = "double"
-      comment = "Volume total de títulos negociados"
-    }
-    columns {
-      name    = "codisi"
-      type    = "string"
-      comment = "Código ISIN"
-    }
-    columns {
-      name    = "dismes"
-      type    = "string"
-      comment = "Número de distribuição"
-    }
-  }
-}
+#     # Campos do layout B3 (série histórica)
+#     columns {
+#       name    = "tipo_registro"
+#       type    = "string"
+#       comment = "Tipo de registro (01=cabeçalho, 02=detalhe, 99=trailer)"
+#     }
+#     columns {
+#       name    = "datpre"
+#       type    = "string"
+#       comment = "Data do pregão (YYYYMMDD)"
+#     }
+#     columns {
+#       name    = "codbdi"
+#       type    = "string"
+#       comment = "Código BDI"
+#     }
+#     columns {
+#       name    = "codneg"
+#       type    = "string"
+#       comment = "Código de negociação (ticker)"
+#     }
+#     columns {
+#       name    = "tpmerc"
+#       type    = "string"
+#       comment = "Tipo de mercado"
+#     }
+#     columns {
+#       name    = "nomres"
+#       type    = "string"
+#       comment = "Nome resumido da empresa"
+#     }
+#     columns {
+#       name    = "especi"
+#       type    = "string"
+#       comment = "Especificação do papel"
+#     }
+#     columns {
+#       name    = "prazot"
+#       type    = "string"
+#       comment = "Prazo em dias do mercado a termo"
+#     }
+#     columns {
+#       name    = "modref"
+#       type    = "string"
+#       comment = "Moeda de referência"
+#     }
+#     columns {
+#       name    = "preabe"
+#       type    = "double"
+#       comment = "Preço de abertura"
+#     }
+#     columns {
+#       name    = "premax"
+#       type    = "double"
+#       comment = "Preço máximo"
+#     }
+#     columns {
+#       name    = "premin"
+#       type    = "double"
+#       comment = "Preço mínimo"
+#     }
+#     columns {
+#       name    = "premed"
+#       type    = "double"
+#       comment = "Preço médio"
+#     }
+#     columns {
+#       name    = "preult"
+#       type    = "double"
+#       comment = "Preço de fechamento"
+#     }
+#     columns {
+#       name    = "preofc"
+#       type    = "double"
+#       comment = "Preço da melhor oferta de compra"
+#     }
+#     columns {
+#       name    = "preofv"
+#       type    = "double"
+#       comment = "Preço da melhor oferta de venda"
+#     }
+#     columns {
+#       name    = "totneg"
+#       type    = "bigint"
+#       comment = "Total de negócios efetuados"
+#     }
+#     columns {
+#       name    = "quatot"
+#       type    = "bigint"
+#       comment = "Quantidade total de títulos negociados"
+#     }
+#     columns {
+#       name    = "voltot"
+#       type    = "double"
+#       comment = "Volume total de títulos negociados"
+#     }
+#     columns {
+#       name    = "codisi"
+#       type    = "string"
+#       comment = "Código ISIN"
+#     }
+#     columns {
+#       name    = "dismes"
+#       type    = "string"
+#       comment = "Número de distribuição"
+#     }
+#   }
+# }
