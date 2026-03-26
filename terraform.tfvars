@@ -7,10 +7,10 @@ project_name = "b3-datalake"
 environment  = "dev"
 
 # IAM Roles (AWS Academy)
-glue_role_arn      = "arn:aws:iam::202521707166:role/LabRole"
-kinesis_role_arn   = "arn:aws:iam::202521707166:role/LabRole"
-sagemaker_role_arn = "arn:aws:iam::202521707166:role/LabRole"
-athena_role_arn    = "arn:aws:iam::202521707166:role/LabRole"
+glue_role_arn      = "arn:aws:iam::992382373019:role/LabRole"
+kinesis_role_arn   = "arn:aws:iam::992382373019:role/LabRole"
+sagemaker_role_arn = "arn:aws:iam::992382373019:role/LabRole"
+athena_role_arn    = "arn:aws:iam::992382373019:role/LabRole"
 
 # Kinesis
 kinesis_stream_shard_count           = 1
